@@ -20,6 +20,12 @@ const ClaimSchema = new mongoose.Schema({
     date: { type: String },
     amount: { type: String }
   },
+  correctedFields: {
+  name: { type: String },
+  date: { type: String },
+  amount: { type: String }
+  },
+
   jobId: { 
     type: String 
   },

@@ -1,46 +1,58 @@
 // CLAIMCHECK/frontend/src/pages/Dashboard.jsx
-import { useState, useEffect } from 'react';
+// CLAIMCHECK/frontend/src/pages/Dashboard.jsx
+
+import { useState, useEffect, useRef } from 'react'; // 1. Import useRef
 import { useNavigate } from 'react-router-dom';
-import { uploadClaim, getClaimStatus } from '../services/claimService';
+import { uploadClaim, getClaim } from '../services/claimService'; // Note: I'm using getClaim for consistency
 
 export default function Dashboard() {
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  
-  // This state will now hold the full claim object that we are tracking
   const [activeClaim, setActiveClaim] = useState(null);
-
+  
+  // 2. Use a ref to hold the interval ID. This persists across re-renders
+  // without causing the effect to re-run.
+  const pollingIntervalRef = useRef(null);
   const navigate = useNavigate();
 
-  // Polling logic using useEffect
-  useEffect(() => {
-    // We only poll if there is an active claim and its status is not final
-    if (activeClaim && (activeClaim.status === 'queued' || activeClaim.status === 'processing')) {
-      const interval = setInterval(async () => {
-        try {
-          const updatedClaim = await getClaimStatus(activeClaim._id);
-          // Update the local state with the latest from the server
-          setActiveClaim(updatedClaim);
+  // This is the stable polling function. It does not depend on component state.
+  const pollClaim = async (claimId) => {
+    try {
+      const updatedClaim = await getClaim(claimId);
+      setActiveClaim(updatedClaim);
 
-          // If the job is done, stop polling
-          if (updatedClaim.status === 'completed' || updatedClaim.status === 'failed') {
-            clearInterval(interval);
-          }
-        } catch (err) {
-          setError('Could not update claim status.');
-          clearInterval(interval);
+      if (updatedClaim.status === 'completed' || updatedClaim.status === 'failed') {
+        // Stop the interval when the job is done
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
         }
-      }, 3000); // Poll every 3 seconds
-
-      // Cleanup function to clear the interval when the component unmounts or activeClaim changes
-      return () => clearInterval(interval);
+      }
+    } catch (err) {
+      setError('Could not update claim status.');
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
     }
-  }, [activeClaim]); // This effect re-runs whenever activeClaim changes
+  };
+
+  // 3. This useEffect is now STABLE. It only runs when the component mounts.
+  // Its job is to clean up any running intervals when the user navigates away.
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []); // Empty dependency array means this runs only once.
 
   const handleLogout = () => {
     localStorage.removeItem('token');
-    setActiveClaim(null); // Clear any active state
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current); // Clean up on logout
+    }
     navigate('/login');
   };
 
@@ -48,20 +60,32 @@ export default function Dashboard() {
     e.preventDefault();
     if (!file) return setError('Please select a file.');
     
+    // Clear any previous polling interval before starting a new one
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    
     setError('');
-    setActiveClaim(null); // Clear previous results
+    setActiveClaim(null);
     setIsUploading(true);
 
     try {
-      // The API now responds immediately with the initial claim object
       const initialClaim = await uploadClaim(file);
-      setActiveClaim(initialClaim); // Set this as our active claim to start polling
+      setActiveClaim(initialClaim);
+      
+      // 4. Start the polling mechanism *after* the initial upload succeeds.
+      if (initialClaim.status === 'queued' || initialClaim.status === 'processing') {
+        pollingIntervalRef.current = setInterval(() => {
+          pollClaim(initialClaim._id);
+        }, 3000);
+      }
+
     } catch (err) {
       setError(err.response?.data?.msg || 'Upload failed.');
     } finally {
       setIsUploading(false);
-      setFile(null); // Reset the file input
-      e.target.reset(); // Reset the form
+      setFile(null);
+      e.target.reset();
     }
   };
 

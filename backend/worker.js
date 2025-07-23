@@ -28,30 +28,29 @@ const extractFields = (text) => {
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null, // Important for long-running workers
 });
+const fs = require('fs').promises; // Import fs for file operations
 
-// The main function to process a single job
 const processClaimJob = async (job) => {
-  const { claimId, fileBuffer } = job.data;
+  // CRITICAL CHANGE: Receive the file PATH, not the buffer.
+  const { claimId, filePath } = job.data;
   
-  // Update status to 'processing' in the database
-  await Claim.findByIdAndUpdate(claimId, { status: 'processing' });
+  try {
+    await Claim.findByIdAndUpdate(claimId, { status: 'processing' });
+    
+    // Tesseract now recognizes the file directly from its path.
+    const result = await Tesseract.recognize(filePath, 'eng');
+    const extractedText = result.data.text;
+    const fields = extractFields(extractedText);
 
-  // Convert the fileBuffer back to a Buffer object for Tesseract
-  const buffer = Buffer.from(fileBuffer.data);
-
-  // Perform OCR
-  const result = await Tesseract.recognize(buffer, 'eng');
-  const extractedText = result.data.text;
-
-  // Extract structured fields
-  const fields = extractFields(extractedText);
-
-  // Update the claim with the final results and 'completed' status
-  await Claim.findByIdAndUpdate(claimId, {
-    status: 'completed',
-    extractedText: extractedText,
-    fields: fields,
-  });
+    await Claim.findByIdAndUpdate(claimId, {
+      status: 'completed',
+      extractedText: extractedText,
+      fields: fields,
+    });
+  } finally {
+    // CRITICAL: Clean up the temporary file after processing.
+    await fs.unlink(filePath);
+  }
 };
 
 // --- Main Worker Initialization ---
