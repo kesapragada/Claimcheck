@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getClaim, updateClaim } from '../services/claimService'; // Use the updated service
+import { getClaim, updateClaim } from '../services/claimService';
+import toast from 'react-hot-toast';
 
 export default function ClaimDetail() {
   const { id } = useParams();
@@ -10,8 +11,6 @@ export default function ClaimDetail() {
   const [formData, setFormData] = useState({ name: '', date: '', amount: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     const fetchClaim = async () => {
@@ -19,10 +18,9 @@ export default function ClaimDetail() {
         setIsLoading(true);
         const fetchedClaim = await getClaim(id);
         setClaim(fetchedClaim);
-        // Pre-fill the form with corrected data if it exists, otherwise use original fields
         setFormData(fetchedClaim.correctedFields || fetchedClaim.fields || { name: '', date: '', amount: '' });
       } catch (err) {
-        setError('Failed to load claim data. Please try again.');
+        toast.error('Failed to load claim data.');
         console.error(err);
       } finally {
         setIsLoading(false);
@@ -38,14 +36,12 @@ export default function ClaimDetail() {
   const handleSave = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    setSaveSuccess(false);
+    const savingToastId = toast.loading('Saving changes...');
     try {
       await updateClaim(id, formData);
-      setSaveSuccess(true);
-      // Hide the success message after 3 seconds
-      setTimeout(() => setSaveSuccess(false), 3000);
+      toast.success('Corrections saved successfully!', { id: savingToastId });
     } catch (err) {
-      setError('Failed to save corrections.');
+      toast.error('Failed to save corrections.', { id: savingToastId });
       console.error(err);
     } finally {
       setIsSaving(false);
@@ -53,20 +49,25 @@ export default function ClaimDetail() {
   };
 
   if (isLoading) {
-    return <div className="text-center mt-10">Loading claim details...</div>;
+    return <div className="text-center p-10">Loading claim details...</div>;
   }
 
-  if (error) {
-    return <div className="text-center mt-10 text-red-500">{error}</div>;
+  if (!claim) {
+    return (
+      <div className="text-center p-10 text-red-500">
+        <p>Could not find claim.</p>
+        <Link to="/history" className="text-blue-600 hover:underline mt-4 inline-block">Go to History</Link>
+      </div>
+    );
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-4 sm:p-6">
       <div className="max-w-2xl mx-auto">
-        <Link to="/" className="text-blue-600 hover:underline mb-4 inline-block">← Back to Dashboard</Link>
-        <div className="bg-white p-8 rounded-lg shadow-md">
-          <h2 className="text-2xl font-bold mb-2 text-gray-800">Edit Claim: {claim.filename}</h2>
-          <p className="text-sm text-gray-500 mb-6">Correct any fields that were extracted incorrectly by the OCR.</p>
+        <Link to="/history" className="text-blue-600 hover:underline mb-4 inline-block">← Back to History</Link>
+        <div className="bg-white p-6 sm:p-8 rounded-lg shadow-md">
+          <h2 className="text-xl sm:text-2xl font-bold mb-2 text-gray-800">Edit Claim</h2>
+          <p className="text-sm text-gray-500 mb-6 font-mono">{claim.filename}</p>
           
           <form onSubmit={handleSave} className="space-y-4">
             <div>
@@ -76,7 +77,7 @@ export default function ClaimDetail() {
                 name="name"
                 value={formData.name || ''}
                 onChange={handleChange}
-                className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -86,7 +87,7 @@ export default function ClaimDetail() {
                 name="date"
                 value={formData.date || ''}
                 onChange={handleChange}
-                className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -96,15 +97,14 @@ export default function ClaimDetail() {
                 name="amount"
                 value={formData.amount || ''}
                 onChange={handleChange}
-                className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div className="flex items-center justify-end space-x-4">
-              {saveSuccess && <span className="text-green-600">Saved successfully!</span>}
+            <div className="flex items-center justify-end pt-2">
               <button
                 type="submit"
                 disabled={isSaving}
-                className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="bg-blue-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-blue-700 transition duration-200 disabled:opacity-50"
               >
                 {isSaving ? 'Saving...' : 'Save Corrections'}
               </button>

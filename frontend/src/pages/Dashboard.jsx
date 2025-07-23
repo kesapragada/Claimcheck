@@ -1,164 +1,164 @@
 // CLAIMCHECK/frontend/src/pages/Dashboard.jsx
-// CLAIMCHECK/frontend/src/pages/Dashboard.jsx
 
-import { useState, useEffect, useRef } from 'react'; // 1. Import useRef
-import { useNavigate } from 'react-router-dom';
-import { uploadClaim, getClaim } from '../services/claimService'; // Note: I'm using getClaim for consistency
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { uploadClaim, getClaim } from '../services/claimService';
+import toast from 'react-hot-toast';
+import { Clock, Loader2, CheckCircle, XCircle } from 'lucide-react';
 
 export default function Dashboard() {
   const [file, setFile] = useState(null);
-  const [error, setError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [activeClaim, setActiveClaim] = useState(null);
-  
-  // 2. Use a ref to hold the interval ID. This persists across re-renders
-  // without causing the effect to re-run.
   const pollingIntervalRef = useRef(null);
   const navigate = useNavigate();
 
-  // This is the stable polling function. It does not depend on component state.
-  const pollClaim = async (claimId) => {
-    try {
-      const updatedClaim = await getClaim(claimId);
-      setActiveClaim(updatedClaim);
-
-      if (updatedClaim.status === 'completed' || updatedClaim.status === 'failed') {
-        // Stop the interval when the job is done
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
-      }
-    } catch (err) {
-      setError('Could not update claim status.');
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    }
-  };
-
-  // 3. This useEffect is now STABLE. It only runs when the component mounts.
-  // Its job is to clean up any running intervals when the user navigates away.
   useEffect(() => {
+    // Cleanup interval on component unmount
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
       }
     };
-  }, []); // Empty dependency array means this runs only once.
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current); // Clean up on logout
-    }
+    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    toast.success('Successfully logged out.');
     navigate('/login');
   };
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!file) return setError('Please select a file.');
-    
-    // Clear any previous polling interval before starting a new one
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
+    if (!file) {
+      toast.error('Please select a file to upload.');
+      return;
     }
-    
-    setError('');
+
+    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     setActiveClaim(null);
     setIsUploading(true);
+    const uploadToastId = toast.loading('Uploading file...');
 
     try {
       const initialClaim = await uploadClaim(file);
+      toast.success('File accepted! Processing has begun.', { id: uploadToastId });
       setActiveClaim(initialClaim);
-      
-      // 4. Start the polling mechanism *after* the initial upload succeeds.
-      if (initialClaim.status === 'queued' || initialClaim.status === 'processing') {
-        pollingIntervalRef.current = setInterval(() => {
-          pollClaim(initialClaim._id);
+
+      if (['queued', 'processing'].includes(initialClaim.status)) {
+        pollingIntervalRef.current = setInterval(async () => {
+          try {
+            const updatedClaim = await getClaim(initialClaim._id);
+            setActiveClaim(updatedClaim);
+            if (['completed', 'failed'].includes(updatedClaim.status)) {
+              if (updatedClaim.status === 'completed') toast.success(`Processing for "${updatedClaim.filename}" complete!`);
+              if (updatedClaim.status === 'failed') toast.error(`Processing for "${updatedClaim.filename}" failed.`);
+              clearInterval(pollingIntervalRef.current);
+            }
+          } catch (err) {
+            toast.error('Could not update claim status.');
+            clearInterval(pollingIntervalRef.current);
+          }
         }, 3000);
       }
-
     } catch (err) {
-      setError(err.response?.data?.msg || 'Upload failed.');
+      toast.error(err.response?.data?.msg || 'Upload failed.', { id: uploadToastId });
     } finally {
       setIsUploading(false);
       setFile(null);
-      e.target.reset();
+      if(e.target) e.target.reset();
     }
   };
 
   const renderStatus = () => {
     if (!activeClaim) return null;
 
-    switch (activeClaim.status) {
-      case 'queued':
-        return <div className="text-center p-4 bg-yellow-100 text-yellow-800 rounded-md">Status: In Queue... ⏳</div>;
-      case 'processing':
-        return <div className="text-center p-4 bg-blue-100 text-blue-800 rounded-md">Status: Processing... ⚙️</div>;
-      case 'failed':
-        return <div className="text-center p-4 bg-red-100 text-red-800 rounded-md">Status: Failed. Please try another file. ❌</div>;
-      case 'completed':
-        return (
-          <div className="mt-8 bg-green-50 p-6 rounded-lg shadow-md max-w-2xl mx-auto">
-            <h3 className="text-xl font-bold text-green-800 mb-4">Extraction Successful ✅</h3>
-            <div className="space-y-2 text-gray-700">
-              <p><strong>Filename:</strong> {activeClaim.filename}</p>
-              <p><strong>Claimant Name:</strong> {activeClaim.fields.name || 'Not found'}</p>
-              <p><strong>Claim Date:</strong> {activeClaim.fields.date || 'Not found'}</p>
-              <p><strong>Claim Amount:</strong> {activeClaim.fields.amount || 'Not found'}</p>
-            </div>
+    const statusMap = {
+      queued: {
+        text: 'In Queue...',
+        icon: <Clock size={20} className="text-yellow-500" />,
+        bg: 'bg-yellow-100 text-yellow-800',
+      },
+      processing: {
+        text: 'Processing Document...',
+        icon: <Loader2 size={20} className="animate-spin text-blue-500" />,
+        bg: 'bg-blue-100 text-blue-800',
+      },
+      failed: {
+        text: 'Processing Failed',
+        icon: <XCircle size={20} className="text-red-500" />,
+        bg: 'bg-red-100 text-red-800',
+      },
+    };
+
+    if (activeClaim.status === 'completed') {
+      return (
+        <div className="mt-8 bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
+          <h3 className="text-xl font-bold text-green-800 mb-4 flex items-center gap-2">
+            <CheckCircle className="text-green-600" /> Extraction Successful
+          </h3>
+          <div className="space-y-3 text-gray-700">
+            <div><strong>Filename:</strong> <span className='font-mono'>{activeClaim.filename}</span></div>
+            <div><strong>Claimant Name:</strong> {activeClaim.fields.name || <span className="text-gray-400">Not found</span>}</div>
+            <div><strong>Claim Date:</strong> {activeClaim.fields.date || <span className="text-gray-400">Not found</span>}</div>
+            <div><strong>Claim Amount:</strong> {activeClaim.fields.amount || <span className="text-gray-400">Not found</span>}</div>
           </div>
-        );
-      default:
-        return null;
+        </div>
+      );
     }
+    
+    const currentStatus = statusMap[activeClaim.status];
+    if (currentStatus) {
+      return (
+        <div className={`text-center p-4 mt-8 rounded-md flex items-center justify-center gap-3 ${currentStatus.bg} max-w-2xl mx-auto`}>
+          {currentStatus.icon}
+          <span className="font-semibold">{currentStatus.text}</span>
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header remains the same */}
       <header className="bg-white shadow-sm">
-        <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-gray-800">ClaimCheck Dashboard</h1>
-          <button
-            onClick={handleLogout}
-            className="bg-red-500 text-white px-4 py-2 rounded-md font-semibold hover:bg-red-600 transition duration-200"
-          >
-            Logout
-          </button>
-          <Link to="/history" className="text-sm text-blue-600 underline ml-4">
-             View History
-          </Link>
-
+        <nav className="container mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
+          <h1 className="text-lg sm:text-xl font-bold text-gray-800">ClaimCheck</h1>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <Link to="/history" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
+              History
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="bg-red-500 text-white px-3 py-2 text-sm rounded-md font-semibold hover:bg-red-600 transition-colors"
+            >
+              Logout
+            </button>
+          </div>
         </nav>
       </header>
       
-      <main className="container mx-auto p-6">
-        <div className="bg-white p-8 rounded-lg shadow-md max-w-2xl mx-auto mb-8">
-          <h2 className="text-2xl font-bold text-gray-700 mb-4">Upload New Claim</h2>
+      <main className="container mx-auto p-4 sm:p-6">
+        <div className="bg-white p-6 sm:p-8 rounded-lg shadow-md max-w-2xl mx-auto mb-8">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-700 mb-4">Upload New Claim</h2>
           <form onSubmit={handleUpload}>
             <input
               type="file"
               accept="application/pdf"
               name="claimFile"
               onChange={(e) => setFile(e.target.files[0])}
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              required
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
             />
             <button
               type="submit"
               disabled={isUploading || !file}
-              className="w-full mt-4 bg-blue-600 text-white p-3 rounded-md font-semibold hover:bg-blue-700 transition duration-200 disabled:opacity-50"
+              className="w-full mt-6 bg-blue-600 text-white p-3 rounded-md font-semibold hover:bg-blue-700 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isUploading ? 'Submitting...' : 'Analyze Claim Document'}
             </button>
           </form>
         </div>
-
-        {error && <div className="bg-red-100 text-red-700 px-4 py-3 rounded-md max-w-2xl mx-auto mb-4">{error}</div>}
-
         {renderStatus()}
       </main>
     </div>
