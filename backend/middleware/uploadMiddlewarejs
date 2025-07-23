@@ -1,0 +1,37 @@
+// CLAIMCHECK/backend/middleware/uploadMiddleware.js
+
+const multer = require('multer');
+
+// Configure multer for in-memory storage. This is ideal for processing files
+// like OCR without needing to save them to the server's disk first.
+const storage = multer.memoryStorage();
+
+// This function validates the uploaded file to ensure it's a PDF.
+// It's a crucial security and stability measure.
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype === 'application/pdf') {
+    // The file is a PDF, so we accept it.
+    cb(null, true);
+  } else {
+    // The file is not a PDF. We reject it by passing an error.
+    // Multer will catch this error and it can be handled by our global error handler.
+    cb(new Error('Invalid file type. Only PDFs are allowed.'), false);
+  }
+};
+
+// Define constraints for the uploaded file, like a size limit.
+// Here, we're setting a 5MB limit.
+const limits = {
+  fileSize: 5 * 1024 * 1024, // 5 Megabytes
+};
+
+// Initialize the Multer instance with our configuration.
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: limits,
+});
+
+// We export the configured middleware for a single file upload.
+// 'claimFile' is the field name we will expect in the multipart/form-data from the frontend.
+module.exports = upload.single('claimFile');
