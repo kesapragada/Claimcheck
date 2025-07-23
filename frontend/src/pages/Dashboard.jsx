@@ -128,6 +128,10 @@ export default function Dashboard() {
           >
             Logout
           </button>
+          <Link to="/history" className="text-sm text-blue-600 underline ml-4">
+             View History
+          </Link>
+
         </nav>
       </header>
       

@@ -1,14 +1,12 @@
 // CLAIMCHECK/frontend/src/services/claimService.js
 
-import API from './api';
+import API from './api'; // Ensure the import is uppercase 'API'
 
-// This function is now the single source for getting a claim's full data.
 export const getClaim = async (claimId) => {
   const response = await API.get(`/claims/status/${claimId}`);
   return response.data;
 };
 
-// This function uploads a new claim.
 export const uploadClaim = async (file) => {
   const formData = new FormData();
   formData.append('claimFile', file);
@@ -16,8 +14,14 @@ export const uploadClaim = async (file) => {
   return response.data;
 };
 
-// This function saves the corrected data for a claim.
 export const updateClaim = async (claimId, correctedData) => {
   const response = await API.put(`/claims/${claimId}`, correctedData);
+  return response.data;
+};
+
+// --- NEW HISTORY SERVICE ---
+export const fetchClaimHistory = async () => {
+  // Use uppercase 'API' to match the import
+  const response = await API.get('/claims/history');
   return response.data;
 };
