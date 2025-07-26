@@ -1,51 +1,88 @@
-// CLAIMCHECK/backend/server.js
-
-const express = require('express');
+//CLAIMCHECK/backend/server.js
+// Load environment variables immediately, once, at the very top of the application entry point.
 const dotenv = require('dotenv');
-const { MulterError } = require('multer'); // Import MulterError for specific error handling
+dotenv.config({ path: '../.env' });
 
-// --- Local Imports ---
+// Now, all other imports will have access to process.env
+const express = require('express');
+const http = require('http');
+const { Server } = require("socket.io");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const cors = require('cors');
+const IORedis = require('ioredis');
 const connectDB = require('./config/db');
+const logger = require('./config/logger');
 const authRoutes = require('./routes/authRoutes');
-const claimRoutes =require('./routes/claimRoutes');
-
-// --- Initial Configuration ---
-dotenv.config();
-connectDB();
+const claimRoutes = require('./routes/claimRoutes');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    methods: ["GET", "POST", "PUT"]
+  }
+});
 
-// --- Core Middleware ---
-// This allows the server to accept and parse JSON in request bodies.
+const pubClient = new IORedis(process.env.REDIS_URL);
+const subClient = pubClient.duplicate();
+
+io.adapter(createAdapter(pubClient, subClient));
+
+io.on('connection', (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+  socket.on('registerUserSocket', (userId) => {
+    if (userId) {
+      console.log(`Socket ${socket.id} joining user room: user-${userId}`);
+      socket.join(`user-${userId}`);
+    }
+  });
+  socket.on('disconnect', () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+  });
+});
+
+subClient.subscribe('claim-updates', (err) => {
+    if (err) logger.error('Failed to subscribe to claim-updates', { error: err.message });
+});
+
+subClient.on('message', (channel, message) => {
+  if (channel === 'claim-updates') {
+    try {
+      const { userId, claim } = JSON.parse(message);
+      io.to(`user-${userId}`).emit('claimUpdate', claim);
+      logger.info(`Broadcasted update for claim ${claim._id} to room user-${userId}`);
+    } catch (e) {
+      logger.error('Failed to parse/send Redis message', { error: e.message });
+    }
+  }
+});
+
+connectDB();
+
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:5173"
+}));
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
-// --- API Routes ---
-app.use('/api/users', authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/claims', claimRoutes);
 
-// --- Custom Global Error Handling Middleware ---
-// This is a catch-all for errors, making the server more robust.
-// It's especially useful for handling errors from middleware like Multer.
 app.use((err, req, res, next) => {
-  // Check if the error is a known Multer error
-  if (err instanceof MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ msg: 'File is too large. Maximum size is 5MB.' });
-    }
-    // Note: The custom fileFilter error is not a MulterError instance
-  }
-  
-  // Handle the custom error from our fileFilter
-  if (err.message === 'Invalid file type. Only PDFs are allowed.') {
-    return res.status(400).json({ msg: err.message });
-  }
-
-  // For any other unexpected errors, log them and send a generic server error response.
-  console.error(err.stack);
+  const errorContext = {
+    requestId: req.headers['x-request-id'],
+    path: req.path,
+    method: req.method,
+    error: {
+      message: err.message,
+      stack: err.stack,
+    },
+  };
+  logger.error('An unexpected server error occurred', errorContext);
   res.status(500).json({ msg: 'An unexpected server error occurred.' });
 });
 
-
-// --- Server Activation ---
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

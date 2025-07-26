@@ -1,16 +1,52 @@
-// CLAIMCHECK/frontend/src/pages/ClaimDetail.jsx
-
-import { useEffect, useState } from 'react';
+//CLAIMCHECK/frontend/src/pages/ClaimDetail.jsx
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getClaim, updateClaim } from '../services/claimService';
 import toast from 'react-hot-toast';
+import { Loader2, ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
+
+// --- PDF Viewer Imports ---
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
+
+// Configure the worker to load from a CDN. This is the easiest setup.
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+
+const formatDateForInput = (isoDate) => {
+  if (!isoDate) return '';
+  const date = new Date(isoDate);
+  const offset = date.getTimezoneOffset();
+  const correctedDate = new Date(date.getTime() - (offset * 60 * 1000));
+  return correctedDate.toISOString().split('T')[0];
+};
+
+const getCurrencySymbol = (currency) => {
+  const currencyCodeMap = { '$': '$', '€': '€', '£': '£', '₹': '₹' };
+  return currencyCodeMap[currency] || '₹';
+};
 
 export default function ClaimDetail() {
   const { id } = useParams();
   const [claim, setClaim] = useState(null);
-  const [formData, setFormData] = useState({ name: '', date: '', amount: '' });
+  const [formData, setFormData] = useState({ name: '', date: '', amount: '', currency: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [numPages, setNumPages] = useState(null);
+
+  const onDocumentLoadSuccess = ({ numPages }) => {
+    setNumPages(numPages);
+  };
+
+  const initialFields = useMemo(() => {
+    if (!claim) return { name: '', date: '', amount: '', currency: '' };
+    const hasCorrections = claim.correctedFields && Object.values(claim.correctedFields).some(v => v !== null && v !== '');
+    return hasCorrections ? claim.correctedFields : claim.fields;
+  }, [claim]);
 
   useEffect(() => {
     const fetchClaim = async () => {
@@ -18,10 +54,8 @@ export default function ClaimDetail() {
         setIsLoading(true);
         const fetchedClaim = await getClaim(id);
         setClaim(fetchedClaim);
-        setFormData(fetchedClaim.correctedFields || fetchedClaim.fields || { name: '', date: '', amount: '' });
       } catch (err) {
         toast.error('Failed to load claim data.');
-        console.error(err);
       } finally {
         setIsLoading(false);
       }
@@ -29,7 +63,16 @@ export default function ClaimDetail() {
     fetchClaim();
   }, [id]);
 
+  useEffect(() => { if (claim) { setFormData(initialFields); } }, [claim, initialFields]);
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
   const handleChange = (e) => {
+    setIsDirty(true);
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -39,75 +82,58 @@ export default function ClaimDetail() {
     const savingToastId = toast.loading('Saving changes...');
     try {
       await updateClaim(id, formData);
+      setIsDirty(false);
       toast.success('Corrections saved successfully!', { id: savingToastId });
     } catch (err) {
       toast.error('Failed to save corrections.', { id: savingToastId });
-      console.error(err);
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) {
-    return <div className="text-center p-10">Loading claim details...</div>;
-  }
-
-  if (!claim) {
-    return (
-      <div className="text-center p-10 text-red-500">
-        <p>Could not find claim.</p>
-        <Link to="/history" className="text-blue-600 hover:underline mt-4 inline-block">Go to History</Link>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin text-indigo-400" /></div>;
+  if (!claim) return <div className="text-center p-10 text-red-500">Could not find claim data.</div>;
 
   return (
-    <div className="container mx-auto p-4 sm:p-6">
-      <div className="max-w-2xl mx-auto">
-        <Link to="/history" className="text-blue-600 hover:underline mb-4 inline-block">← Back to History</Link>
-        <div className="bg-white p-6 sm:p-8 rounded-lg shadow-md">
-          <h2 className="text-xl sm:text-2xl font-bold mb-2 text-gray-800">Edit Claim</h2>
-          <p className="text-sm text-gray-500 mb-6 font-mono">{claim.filename}</p>
-          
+    <div className="max-w-7xl mx-auto">
+      <Link to="/history" className="text-indigo-400 hover:underline mb-4 inline-flex items-center gap-2"><ArrowLeft size={16} /> Back to History</Link>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        {/* --- PDF Viewer Column --- */}
+        <div className="bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg shadow-lg overflow-y-auto h-[75vh]">
+          <Document file={claim.secureUrl} onLoadSuccess={onDocumentLoadSuccess} className="flex justify-center p-4">
+            {Array.from(new Array(numPages), (el, index) => (
+              <Page key={`page_${index + 1}`} pageNumber={index + 1} />
+            ))}
+          </Document>
+        </div>
+
+        {/* --- Edit Form Column --- */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-lg shadow-lg">
+          <h2 className="text-2xl font-bold mb-2">Edit Claim</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 font-mono break-all">{claim.filename}</p>
           <form onSubmit={handleSave} className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">Claimant Name</label>
-              <input
-                id="name"
-                name="name"
-                value={formData.name || ''}
-                onChange={handleChange}
-                className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <Label htmlFor="name">Claimant Name</Label>
+              <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} className="mt-1" placeholder="None" />
             </div>
             <div>
-              <label htmlFor="date" className="block text-sm font-medium text-gray-700">Claim Date</label>
-              <input
-                id="date"
-                name="date"
-                value={formData.date || ''}
-                onChange={handleChange}
-                className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <Label htmlFor="date">Claim Date</Label>
+              <Input id="date" name="date" type="date" value={formatDateForInput(formData.date)} onChange={handleChange} className="mt-1" />
             </div>
             <div>
-              <label htmlFor="amount" className="block text-sm font-medium text-gray-700">Claim Amount</label>
-              <input
-                id="amount"
-                name="amount"
-                value={formData.amount || ''}
-                onChange={handleChange}
-                className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <Label htmlFor="amount">Claim Amount</Label>
+              <div className="relative mt-1">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                  <span className="text-slate-400 sm:text-sm">{getCurrencySymbol(formData.currency)}</span>
+                </div>
+                <Input id="amount" name="amount" type="number" step="0.01" value={formData.amount || ''} onChange={handleChange} className="pl-7" placeholder="None" />
+              </div>
             </div>
-            <div className="flex items-center justify-end pt-2">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="bg-blue-600 text-white px-6 py-2 rounded-md font-semibold hover:bg-blue-700 transition duration-200 disabled:opacity-50"
-              >
+            <div className="flex justify-end pt-2">
+              <Button type="submit" disabled={isSaving || !isDirty}>
                 {isSaving ? 'Saving...' : 'Save Corrections'}
-              </button>
+              </Button>
             </div>
           </form>
         </div>

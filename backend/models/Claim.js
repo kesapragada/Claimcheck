@@ -1,40 +1,48 @@
-// CLAIMCHECK/backend/models/Claim.js
+//CLAIMCHECK/backend/models/Claim.js
 const mongoose = require('mongoose');
 
 const ClaimSchema = new mongoose.Schema({
-  userId: { // Changed from 'user' to 'userId' for consistency
+  userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true 
+    required: true,
   },
-  filename: { 
-    type: String, 
-    required: true 
+  filename: {
+    type: String,
+    required: true,
   },
-  extractedText: { 
-    type: String, 
-    default: '' 
+  secureUrl: {
+    type: String,
+    required: true,
   },
-  fields: {
-    name: { type: String },
-    date: { type: String },
-    amount: { type: String }
+  publicId: {
+    type: String,
+    required: true,
   },
-  correctedFields: {
-  name: { type: String },
-  date: { type: String },
-  amount: { type: String }
-  },
-
-  jobId: { 
-    type: String 
+  jobId: {
+    type: String,
   },
   status: {
     type: String,
-    // Add 'failed' to the possible statuses
-    enum: ['queued', 'processing', 'completed', 'failed'], 
-    default: 'queued'
-  }
+    enum: ['queued', 'processing', 'completed', 'failed'],
+    default: 'queued',
+  },
+  extractedText: {
+    type: String,
+    default: '',
+  },
+  fields: {
+    name: { type: String, default: null },
+    date: { type: Date, default: null },
+    amount: { type: Number, default: null },
+    currency: { type: String, default: null }, //-- FIX: Added currency field
+  },
+  correctedFields: {
+    name: { type: String, default: null },
+    date: { type: Date, default: null },
+    amount: { type: Number, default: null },
+    currency: { type: String, default: null }, //-- FIX: Added currency field
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Claim', ClaimSchema);

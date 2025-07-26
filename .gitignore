@@ -1,11 +1,12 @@
-#CLAIMCHECK/.gitignore
+# /claimcheck/.gitignore
+
 # Dependencies
-backend/node_modules/
-frontend/node_modules/
+/node_modules
+/backend/node_modules
+/frontend/node_modules
 
 # Build output
-frontend/dist/
-frontend/dist-ssr/
+/frontend/dist
 
 # Environment variables
 .env

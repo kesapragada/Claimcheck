@@ -1,26 +1,31 @@
-/* CLAIMCHECK/frontend/src/App.jsx*/
-
+//CLAIMCHECK/frontend/react/src/App.jsx
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import ProtectedRoute from './routes/ProtectedRoute';
+import AuthLayout from './layouts/AuthLayout';
+import AppLayout from './layouts/AppLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import ProtectedRoute from './routes/ProtectedRoute';
-import ClaimDetail from './pages/ClaimDetail';
 import History from './pages/History';
+import ClaimDetail from './pages/ClaimDetail';
 
-function App() {
+export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/claim/:id" element={<ProtectedRoute><ClaimDetail /></ProtectedRoute>} />
-        <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
+        <Route element={<AuthLayout />}>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+        </Route>
 
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/claim/:id" element={<ClaimDetail />} />
+          </Route>
+        </Route>
       </Routes>
     </Router>
   );
 }
-
-export default App;

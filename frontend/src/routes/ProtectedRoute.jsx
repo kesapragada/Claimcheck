@@ -1,10 +1,13 @@
-//frontend/src/routes/ProtectedRoute.jsx
+//CLAIMCHECK/frontend/react/src/routes/ProtectedRoute.jsx
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-import { Navigate } from 'react-router-dom';
-
-const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" />;
+export default function ProtectedRoute() {
+  const { token } = useAuth();
+  
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return <Outlet />;
 };
-
-export default ProtectedRoute;

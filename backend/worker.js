@@ -1,78 +1,118 @@
-// CLAIMCHECK/backend/worker.js
+//CLAIMCHECK/backend/worker.js
+const dotenv = require('dotenv');
+dotenv.config({ path: '../.env' });
 
 const { Worker } = require('bullmq');
 const IORedis = require('ioredis');
 const Tesseract = require('tesseract.js');
+const fs = require('fs').promises;
+const os = require('os');
+const path = require('path');
+const { createWriteStream } = require('fs');
+const axios = require('axios');
+const poppler = require('pdf-poppler');
 
-// Import your DB connection and models
 const connectDB = require('./config/db');
 const Claim = require('./models/Claim');
+const logger = require('./config/logger');
 
-// Load environment variables
-require('dotenv').config();
+const redisPub = new IORedis(process.env.REDIS_URL);
 
-// --- Tesseract Field Extraction Logic (copied from original controller) ---
 const extractFields = (text) => {
-  const nameMatch = text.match(/Name:\s*([A-Za-z\s]+)/i);
-  const dateMatch = text.match(/\b(\d{2}[-/.s]\d{2}[-/.s]\d{4})\b/);
-  const amountMatch = text.match(/\$\s?(\d{1,3}(,\d{3})*(\.\d{2})?)/);
+  // --- FINAL, DEFINITIVE, LINE-ANCHORED NAME REGEX ---
+  // The `m` flag allows `^` to match the start of a line.
+  // This CANNOT be greedy across newlines.
+  const nameMatch = text.match(/^(?:name|claimant|applicant|patient|submitted by)\s*[:\-\s]\s*(.*)$/im);
+  
+  const dateMatch = text.match(/\b(\d{1,2}[-/.s]\d{1,2}[-/.s]\d{2,4})\b/);
+  const amountMatches = text.matchAll(/(?:amount|total|charge|payment|balance due)\s*[:\-\s]\s*(?<currency>[$€£₹])?\s*(?<value>\d{1,3}(?:,\d{3})*\.\d{2})\s*(?!\k<currency>)(?<currency2>[$€£₹])?/gi);
+  
+  let bestAmount = null;
+  let detectedCurrency = null;
+  let highestValue = -1;
+  for (const match of amountMatches) {
+    const value = parseFloat(match.groups.value.replace(/,/g, ''));
+    if (value > highestValue) {
+      highestValue = value;
+      bestAmount = value;
+      detectedCurrency = match.groups.currency || match.groups.currency2 || null; 
+    }
+  }
+
+  const extractedName = nameMatch && nameMatch[1] ? nameMatch[1].trim() : null;
+  const parsedDateString = dateMatch && dateMatch[1] ? dateMatch[1] : null;
+  const parsedDate = parsedDateString ? new Date(parsedDateString) : null;
+  const finalDate = parsedDate && !isNaN(parsedDate) ? parsedDate : null;
 
   return {
-    name: nameMatch ? nameMatch[1].trim() : null,
-    date: dateMatch ? dateMatch[1] : null,
-    amount: amountMatch ? amountMatch[0] : null,
+    name: extractedName,
+    date: finalDate,
+    amount: bestAmount,
+    currency: detectedCurrency,
   };
 };
 
-// --- Worker Implementation ---
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null, // Important for long-running workers
-});
-const fs = require('fs').promises; // Import fs for file operations
 
-const processClaimJob = async (job) => {
-  // CRITICAL CHANGE: Receive the file PATH, not the buffer.
-  const { claimId, filePath } = job.data;
-  
+const publishUpdate = async (claimId) => {
   try {
-    await Claim.findByIdAndUpdate(claimId, { status: 'processing' });
-    
-    // Tesseract now recognizes the file directly from its path.
-    const result = await Tesseract.recognize(filePath, 'eng');
-    const extractedText = result.data.text;
-    const fields = extractFields(extractedText);
-
-    await Claim.findByIdAndUpdate(claimId, {
-      status: 'completed',
-      extractedText: extractedText,
-      fields: fields,
-    });
-  } finally {
-    // CRITICAL: Clean up the temporary file after processing.
-    await fs.unlink(filePath);
+    const updatedClaim = await Claim.findById(claimId);
+    if (updatedClaim) {
+      const message = JSON.stringify({ userId: updatedClaim.userId.toString(), claim: updatedClaim });
+      await redisPub.publish('claim-updates', message);
+    }
+  } catch (e) {
+    logger.error(`[Worker] Failed to publish update for claim ${claimId}`, { error: e.message });
   }
 };
 
-// --- Main Worker Initialization ---
+const processClaimJob = async (job) => {
+  const { claimId, signedUrl } = job.data;
+  const tempPdfPath = path.join(os.tmpdir(), `claim-${claimId}-${Date.now()}.pdf`);
+  const writer = createWriteStream(tempPdfPath);
+  const tempImageBase = path.join(os.tmpdir(), `claim-image-${claimId}-${Date.now()}`);
+  try {
+    await Claim.findByIdAndUpdate(claimId, { status: 'processing' });
+    await publishUpdate(claimId);
+    const response = await axios({ url: signedUrl, method: 'GET', responseType: 'stream' });
+    response.data.pipe(writer);
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+    const convertOptions = {
+      format: 'png',
+      out_dir: os.tmpdir(),
+      out_prefix: path.basename(tempImageBase),
+      page: 1
+    };
+    await poppler.convert(tempPdfPath, convertOptions);
+    const finalImagePath = `${tempImageBase}-1.png`;
+    const result = await Tesseract.recognize(finalImagePath, 'eng');
+    console.log("--- RAW OCR TEXT ---", result.data.text);
+
+    const fields = extractFields(result.data.text);
+    await Claim.findByIdAndUpdate(claimId, { status: 'completed', extractedText: result.data.text, fields });
+    await publishUpdate(claimId);
+  } catch (err) {
+    logger.error(`[Worker] Error processing claim ${claimId}`, { error: err.message, stack: err.stack });
+    await Claim.findByIdAndUpdate(claimId, { status: 'failed' });
+    await publishUpdate(claimId);
+  } finally {
+    await fs.unlink(tempPdfPath).catch(err => logger.warn(`[Worker] Failed to delete temp PDF ${tempPdfPath}`, { error: err.message }));
+    const finalImagePath = `${tempImageBase}-1.png`;
+    await fs.unlink(finalImagePath).catch(err => {
+      if (err.code !== 'ENOENT') {
+        logger.warn(`[Worker] Failed to delete temp PNG ${finalImagePath}`, { error: err.message });
+      }
+    });
+  }
+};
+
 const startWorker = async () => {
-  console.log('Connecting to database...');
   await connectDB();
-  console.log('Database connected.');
-
-  console.log('Worker starting...');
+  const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
   const worker = new Worker('claims', processClaimJob, { connection });
-
-  worker.on('completed', (job) => {
-    console.log(`Job ${job.id} has completed for claim ${job.data.claimId}`);
-  });
-
-  worker.on('failed', async (job, err) => {
-    console.error(`Job ${job.id} has failed for claim ${job.data.claimId} with error: ${err.message}`);
-    // If a job fails, update its status in the DB
-    await Claim.findByIdAndUpdate(job.data.claimId, { status: 'failed' });
-  });
-
-  console.log('Worker is listening for jobs...');
+  logger.info('Worker is ready and listening for jobs...');
 };
 
 startWorker();

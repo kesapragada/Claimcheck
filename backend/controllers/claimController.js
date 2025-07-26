@@ -1,81 +1,81 @@
-// CLAIMCHECK/backend/controllers/claimController.js
+//CLAIMCHECK/backend/controllers/claimController.js
 
+// This controller receives the upload result from the frontend.
+// The 'protect' middleware guarantees that req.user exists.
 const Claim = require('../models/Claim');
 const claimQueue = require('../queues/claimQueue');
+const cloudinary = require('../config/cloudinary');
 
-// Controller to upload and queue a new claim
-const uploadClaim = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ msg: 'No file uploaded.' });
-  }
+exports.createClaim = async (req, res, next) => {
+  const { filename, secureUrl, publicId } = req.body;
   try {
+    // We no longer need the 'explicit' call. The asset can remain private.
+
+    // --- GENERATE A SIGNED, TEMPORARY DOWNLOAD URL ---
+    const signedDownloadUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
+      type: 'upload',
+      // The URL will be valid for 10 minutes.
+      // This gives the worker plenty of time to grab the file.
+      expires_at: Math.floor(Date.now() / 1000) + 600 
+    });
+    // -----------------------------------------------
+
     const newClaim = await Claim.create({
       userId: req.user.id,
-      filename: req.file.originalname,
+      filename,
+      secureUrl, // Store the permanent URL for later use if needed
+      publicId,
     });
-    const job = await claimQueue.add('process-claim', {
+
+    await claimQueue.add('process-claim', {
       claimId: newClaim.id,
-      filePath: req.file.path,
+      // Pass the temporary, signed URL to the worker.
+      signedUrl: signedDownloadUrl, 
     });
-    newClaim.jobId = job.id;
-    await newClaim.save();
-    res.status(202).json(newClaim);
+
+    res.status(201).json(newClaim);
   } catch (err) {
-    console.error('Upload controller error:', err);
-    res.status(500).json({ msg: 'Server error during claim submission.' });
+    console.error("Error in createClaim:", err);
+    next(err);
   }
 };
-
-// Controller to update corrected fields for a claim
-const updateClaim = async (req, res) => {
-  const { id } = req.params;
-  const { name, date, amount } = req.body;
+exports.updateClaim = async (req, res, next) => {
   try {
-    const claim = await Claim.findById(id);
-    if (!claim) return res.status(404).json({ error: 'Claim not found' });
-    if (claim.userId.toString() !== req.user.id) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-    claim.correctedFields = { name, date, amount };
-    await claim.save();
-    res.json(claim);
+    const claim = await Claim.findById(req.params.id);
+    if (!claim) return res.status(404).json({ msg: 'Claim not found.' });
+    if (claim.userId.toString() !== req.user.id) return res.status(403).json({ msg: 'User not authorized.' });
+    
+    const amountString = req.body.amount ? String(req.body.amount).replace(/[$,€£\s]/g, '') : '0';
+    
+    claim.correctedFields = {
+      name: req.body.name,
+      date: req.body.date ? new Date(req.body.date) : null,
+      amount: parseFloat(amountString),
+    };
+    claim.status = 'completed';
+    const updatedClaim = await claim.save();
+    res.status(200).json(updatedClaim);
   } catch (err) {
-    console.error('Update claim error:', err);
-    res.status(500).json({ error: 'Failed to update claim' });
+    next(err);
   }
 };
 
-// Controller to check the status of a specific claim
-const checkStatus = async (req, res) => {
+exports.getClaimById = async (req, res, next) => {
   try {
-    const claim = await Claim.findById(req.params.claimId);
-    if (!claim || claim.userId.toString() !== req.user.id) {
-      return res.status(404).json({ msg: 'Claim not found.' });
-    }
-    res.status(200).json(claim); // Return the full claim object for consistency
+    const claim = await Claim.findById(req.params.id);
+    if (!claim) return res.status(404).json({ msg: 'Claim not found.' });
+    if (claim.userId.toString() !== req.user.id) return res.status(403).json({ msg: 'User not authorized.' });
+    res.status(200).json(claim);
   } catch (err) {
-    console.error('Status check error:', err);
-    res.status(500).json({ msg: 'Server error while checking status.' });
+    next(err);
   }
 };
 
-// --- NEW HISTORY CONTROLLER ---
-// Controller to get all claims for the logged-in user
-const getClaimHistory = async (req, res) => {
+exports.getClaimHistory = async (req, res, next) => {
   try {
     const claims = await Claim.find({ userId: req.user.id }).sort({ createdAt: -1 });
     res.status(200).json(claims);
   } catch (err) {
-    console.error('History fetch error:', err);
-    res.status(500).json({ msg: 'Server error while fetching history.' });
+    next(err);
   }
-};
-
-
-// Use a single, consistent module.exports object for all functions
-module.exports = {
-  uploadClaim,
-  updateClaim,
-  checkStatus,
-  getClaimHistory,
 };

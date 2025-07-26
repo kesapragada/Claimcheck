@@ -1,33 +1,63 @@
-// CLAIMCHECK/frontend/src/pages/Dashboard.jsx
-
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { uploadClaim, getClaim } from '../services/claimService';
+//CLAIMCHECK/frontend/react/src/pages/Dashboard.jsx
+import React, { useState, useEffect, useRef } from 'react';
+import { useSocket } from '../context/SocketContext';
+import { createClaim } from '../services/claimService';
 import toast from 'react-hot-toast';
-import { Clock, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import axios from 'axios';
+import { Clock, Loader2, CheckCircle, XCircle, UploadCloud } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Button } from '@/components/ui/Button';
+
+const formatCurrency = (amount, currencySymbol) => {
+  if (amount === null || amount === undefined) {
+    return <span className="text-slate-500">Not found</span>;
+  }
+  const currencyCodeMap = { '$': 'USD', '€': 'EUR', '£': 'GBP', '₹': 'INR' };
+  const currencyCode = currencyCodeMap[currencySymbol] || 'INR';
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: currencyCode }).format(amount);
+};
 
 export default function Dashboard() {
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [activeClaim, setActiveClaim] = useState(null);
-  const pollingIntervalRef = useRef(null);
-  const navigate = useNavigate();
+  
+  // This ref will hold the ID of the claim we are currently tracking.
+  // It is immune to the stale closure problem.
+  const activeClaimIdRef = useRef(null);
+  
+  const socket = useSocket();
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    // Cleanup interval on component unmount
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
+    if (!socket) return;
+    
+    const handleClaimUpdate = (updatedClaim) => {
+      console.log('Socket event received:', updatedClaim);
+      console.log('Comparing to active ID:', activeClaimIdRef.current);
+
+      // The listener ALWAYS checks the .current value of the ref, which is guaranteed to be up-to-date.
+      if (activeClaimIdRef.current && updatedClaim._id === activeClaimIdRef.current) {
+        
+        // Use the functional update form of setState to ensure we work with the most recent state.
+        setActiveClaim(prevClaim => {
+          if (updatedClaim.status === 'completed' && prevClaim?.status !== 'completed') {
+            toast.success(`Processing for "${updatedClaim.filename}" complete!`);
+          }
+          if (updatedClaim.status === 'failed' && prevClaim?.status !== 'failed') {
+            toast.error(`Processing for "${updatedClaim.filename}" failed.`);
+          }
+          return updatedClaim;
+        });
       }
     };
-  }, []);
+    
+    socket.on('claimUpdate', handleClaimUpdate);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-    toast.success('Successfully logged out.');
-    navigate('/login');
-  };
+    return () => {
+      socket.off('claimUpdate', handleClaimUpdate);
+    };
+  }, [socket]); // This effect ONLY re-runs if the socket object itself changes.
 
   const handleUpload = async (e) => {
     e.preventDefault();
@@ -35,132 +65,97 @@ export default function Dashboard() {
       toast.error('Please select a file to upload.');
       return;
     }
-
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-    setActiveClaim(null);
     setIsUploading(true);
+    setActiveClaim(null);
+    activeClaimIdRef.current = null; // Reset the ref before a new upload.
     const uploadToastId = toast.loading('Uploading file...');
 
     try {
-      const initialClaim = await uploadClaim(file);
-      toast.success('File accepted! Processing has begun.', { id: uploadToastId });
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', 'claimcheck_preset');
+      const response = await axios.post(
+        `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
+        formData
+      );
+      const { secure_url, public_id } = response.data;
+      const initialClaim = await createClaim({
+        filename: file.name,
+        secureUrl: secure_url,
+        publicId: public_id,
+      });
+      toast.success('File accepted! Processing begins.', { id: uploadToastId });
+      
+      // Set the state for rendering AND the ref for the socket listener.
       setActiveClaim(initialClaim);
+      activeClaimIdRef.current = initialClaim._id;
 
-      if (['queued', 'processing'].includes(initialClaim.status)) {
-        pollingIntervalRef.current = setInterval(async () => {
-          try {
-            const updatedClaim = await getClaim(initialClaim._id);
-            setActiveClaim(updatedClaim);
-            if (['completed', 'failed'].includes(updatedClaim.status)) {
-              if (updatedClaim.status === 'completed') toast.success(`Processing for "${updatedClaim.filename}" complete!`);
-              if (updatedClaim.status === 'failed') toast.error(`Processing for "${updatedClaim.filename}" failed.`);
-              clearInterval(pollingIntervalRef.current);
-            }
-          } catch (err) {
-            toast.error('Could not update claim status.');
-            clearInterval(pollingIntervalRef.current);
-          }
-        }, 3000);
-      }
     } catch (err) {
-      toast.error(err.response?.data?.msg || 'Upload failed.', { id: uploadToastId });
+      const errorMsg = err.response?.data?.error?.message || 'Upload failed. Please try again.';
+      toast.error(errorMsg, { id: uploadToastId });
     } finally {
       setIsUploading(false);
       setFile(null);
-      if(e.target) e.target.reset();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = null;
+      }
     }
   };
-
+  
   const renderStatus = () => {
     if (!activeClaim) return null;
-
     const statusMap = {
-      queued: {
-        text: 'In Queue...',
-        icon: <Clock size={20} className="text-yellow-500" />,
-        bg: 'bg-yellow-100 text-yellow-800',
-      },
-      processing: {
-        text: 'Processing Document...',
-        icon: <Loader2 size={20} className="animate-spin text-blue-500" />,
-        bg: 'bg-blue-100 text-blue-800',
-      },
-      failed: {
-        text: 'Processing Failed',
-        icon: <XCircle size={20} className="text-red-500" />,
-        bg: 'bg-red-100 text-red-800',
-      },
+      queued: { text: 'In Queue...', icon: <Clock className="h-5 w-5 text-yellow-400" />, bg: 'border-yellow-400/50' },
+      processing: { text: 'Processing Document...', icon: <Loader2 className="h-5 w-5 animate-spin text-blue-400" />, bg: 'border-blue-400/50' },
+      failed: { text: 'Processing Failed', icon: <XCircle className="h-5 w-5 text-red-500" />, bg: 'border-red-500/50' },
     };
-
     if (activeClaim.status === 'completed') {
       return (
-        <div className="mt-8 bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
-          <h3 className="text-xl font-bold text-green-800 mb-4 flex items-center gap-2">
-            <CheckCircle className="text-green-600" /> Extraction Successful
-          </h3>
-          <div className="space-y-3 text-gray-700">
-            <div><strong>Filename:</strong> <span className='font-mono'>{activeClaim.filename}</span></div>
-            <div><strong>Claimant Name:</strong> {activeClaim.fields.name || <span className="text-gray-400">Not found</span>}</div>
-            <div><strong>Claim Date:</strong> {activeClaim.fields.date || <span className="text-gray-400">Not found</span>}</div>
-            <div><strong>Claim Amount:</strong> {activeClaim.fields.amount || <span className="text-gray-400">Not found</span>}</div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900 border border-slate-800 p-6 rounded-lg">
+          <h3 className="text-xl font-bold text-green-400 mb-4 flex items-center gap-2"><CheckCircle /> Extraction Successful</h3>
+          <div className="space-y-3 text-slate-300 font-mono text-sm">
+            <p><strong>Name:</strong> {activeClaim.fields.name || <span className="text-slate-500">Not found</span>}</p>
+            <p><strong>Date:</strong> {activeClaim.fields.date ? new Date(activeClaim.fields.date).toLocaleDateString() : <span className="text-slate-500">Not found</span>}</p>
+            <p><strong>Amount:</strong> {formatCurrency(activeClaim.fields.amount, activeClaim.fields.currency)}</p>
           </div>
-        </div>
+        </motion.div>
       );
     }
-    
     const currentStatus = statusMap[activeClaim.status];
-    if (currentStatus) {
-      return (
-        <div className={`text-center p-4 mt-8 rounded-md flex items-center justify-center gap-3 ${currentStatus.bg} max-w-2xl mx-auto`}>
-          {currentStatus.icon}
-          <span className="font-semibold">{currentStatus.text}</span>
-        </div>
-      );
-    }
-    return null;
+    return currentStatus ? (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={`p-4 rounded-lg flex items-center justify-center gap-3 border ${currentStatus.bg} bg-slate-900`}>
+        {currentStatus.icon} <span className="font-semibold text-slate-200">{currentStatus.text}</span>
+      </motion.div>
+    ) : null;
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <nav className="container mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
-          <h1 className="text-lg sm:text-xl font-bold text-gray-800">ClaimCheck</h1>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <Link to="/history" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
-              History
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="bg-red-500 text-white px-3 py-2 text-sm rounded-md font-semibold hover:bg-red-600 transition-colors"
-            >
-              Logout
-            </button>
+    <div className="max-w-3xl mx-auto space-y-8">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900 border border-slate-800 p-8 rounded-lg shadow-2xl">
+        <h2 className="text-2xl font-bold text-white mb-4">Upload New Claim</h2>
+        <form onSubmit={handleUpload}>
+          <div className="mt-2 flex justify-center rounded-lg border border-dashed border-slate-700 px-6 py-10">
+            <div className="text-center">
+              <UploadCloud className="mx-auto h-12 w-12 text-slate-500" />
+              <div className="mt-4 flex text-sm leading-6 text-slate-400">
+                <label htmlFor="file-upload" className="relative cursor-pointer rounded-md font-semibold text-indigo-400 focus-within:outline-none hover:text-indigo-300">
+                  <span>Upload a file</span>
+                  <input ref={fileInputRef} id="file-upload" name="file-upload" type="file" className="sr-only" onChange={(e) => setFile(e.target.files[0])} accept=".pdf"/>
+                </label>
+                <p className="pl-1">or drag and drop</p>
+              </div>
+              <p className="text-xs leading-5 text-slate-500">PDF up to 5MB</p>
+              {file && <p className="text-sm mt-2 text-green-400 font-mono">{file.name}</p>}
+            </div>
           </div>
-        </nav>
-      </header>
-      
-      <main className="container mx-auto p-4 sm:p-6">
-        <div className="bg-white p-6 sm:p-8 rounded-lg shadow-md max-w-2xl mx-auto mb-8">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-700 mb-4">Upload New Claim</h2>
-          <form onSubmit={handleUpload}>
-            <input
-              type="file"
-              accept="application/pdf"
-              name="claimFile"
-              onChange={(e) => setFile(e.target.files[0])}
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-            />
-            <button
-              type="submit"
-              disabled={isUploading || !file}
-              className="w-full mt-6 bg-blue-600 text-white p-3 rounded-md font-semibold hover:bg-blue-700 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isUploading ? 'Submitting...' : 'Analyze Claim Document'}
-            </button>
-          </form>
-        </div>
-        {renderStatus()}
-      </main>
+          <Button type="submit" disabled={isUploading || !file} className="w-full mt-6">
+            {isUploading ? 'Uploading...' : 'Analyze Claim Document'}
+          </Button>
+        </form>
+      </motion.div>
+      <AnimatePresence>
+        {activeClaim && renderStatus()}
+      </AnimatePresence>
     </div>
   );
 }

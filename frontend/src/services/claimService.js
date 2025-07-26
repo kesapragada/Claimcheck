@@ -1,27 +1,13 @@
-// CLAIMCHECK/frontend/src/services/claimService.js
+//CLAIMCHECK/frontend/react/src/services/claimService.js
+import API from './api';
 
-import API from './api'; // Ensure the import is uppercase 'API'
-
-export const getClaim = async (claimId) => {
-  const response = await API.get(`/claims/status/${claimId}`);
-  return response.data;
+// The only function needed for upload is to inform our backend after Cloudinary is done.
+export const createClaim = (claimData) => {
+  return API.post('/claims', claimData).then(res => res.data);
 };
 
-export const uploadClaim = async (file) => {
-  const formData = new FormData();
-  formData.append('claimFile', file);
-  const response = await API.post('/claims/upload', formData);
-  return response.data;
-};
+export const fetchClaimHistory = () => API.get('/claims').then(res => res.data);
 
-export const updateClaim = async (claimId, correctedData) => {
-  const response = await API.put(`/claims/${claimId}`, correctedData);
-  return response.data;
-};
+export const getClaim = (claimId) => API.get(`/claims/${claimId}`).then(res => res.data);
 
-// --- NEW HISTORY SERVICE ---
-export const fetchClaimHistory = async () => {
-  // Use uppercase 'API' to match the import
-  const response = await API.get('/claims/history');
-  return response.data;
-};
+export const updateClaim = (claimId, correctedData) => API.put(`/claims/${claimId}`, correctedData).then(res => res.data);
