@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/pages/History.jsx
+//CLAIMCHECK/frontend/src/pages/History.jsx
 import React, { useEffect, useState } from 'react';
 import { fetchClaimHistory } from '../services/claimService';
 import { Link } from 'react-router-dom';

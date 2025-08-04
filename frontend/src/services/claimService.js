@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/services/claimService.js
+//CLAIMCHECK/frontend/src/services/claimService.js
 import API from './api';
 
 // The only function needed for upload is to inform our backend after Cloudinary is done.

@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/layouts/AppLayout.jsx
+//CLAIMCHECK/frontend/src/layouts/AppLayout.jsx
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext'; // <-- Import useTheme

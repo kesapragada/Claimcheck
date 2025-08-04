@@ -1,4 +1,3 @@
-//CLAIMCHECK/backend/worker.js
 const dotenv = require('dotenv');
 dotenv.config({ path: '../.env' });
 
@@ -19,13 +18,21 @@ const logger = require('./config/logger');
 const redisPub = new IORedis(process.env.REDIS_URL);
 
 const extractFields = (text) => {
-  // --- FINAL, DEFINITIVE, LINE-ANCHORED NAME REGEX ---
-  // The `m` flag allows `^` to match the start of a line.
-  // This CANNOT be greedy across newlines.
-  const nameMatch = text.match(/^(?:name|claimant|applicant|patient|submitted by)\s*[:\-\s]\s*(.*)$/im);
+  // --- FINAL NAME EXTRACTION LOGIC ---
+  const nameLineMatch = text.match(/^(?:name|claimant|applicant|patient|submitted by)\s*[:\-\s]\s*(.*)$/im);
+  let extractedName = null;
+  if (nameLineMatch && nameLineMatch[1]) {
+    let potentialName = nameLineMatch[1];
+    const cleanupPattern = /\s+(?:date|policy|claim|service|report|id).*/i;
+    extractedName = potentialName.replace(cleanupPattern, '').trim();
+  }
   
+  // --- FINAL DATE EXTRACTION LOGIC ---
   const dateMatch = text.match(/\b(\d{1,2}[-/.s]\d{1,2}[-/.s]\d{2,4})\b/);
-  const amountMatches = text.matchAll(/(?:amount|total|charge|payment|balance due)\s*[:\-\s]\s*(?<currency>[$€£₹])?\s*(?<value>\d{1,3}(?:,\d{3})*\.\d{2})\s*(?!\k<currency>)(?<currency2>[$€£₹])?/gi);
+  
+  // --- FINAL AMOUNT EXTRACTION LOGIC ---
+  // This regex is now as comprehensive as it can be for the provided examples.
+  const amountMatches = text.matchAll(/(?:total amount|balance duc|balance due|amount due|total charges|total chirges|payment|total|amount|charge)\s*[:\-\s]*?(?<currency>[$€£₹])?\s*(?<value>[\d,]+\.\d{2})/gi);
   
   let bestAmount = null;
   let detectedCurrency = null;
@@ -35,11 +42,10 @@ const extractFields = (text) => {
     if (value > highestValue) {
       highestValue = value;
       bestAmount = value;
-      detectedCurrency = match.groups.currency || match.groups.currency2 || null; 
+      detectedCurrency = match.groups.currency || null; 
     }
   }
 
-  const extractedName = nameMatch && nameMatch[1] ? nameMatch[1].trim() : null;
   const parsedDateString = dateMatch && dateMatch[1] ? dateMatch[1] : null;
   const parsedDate = parsedDateString ? new Date(parsedDateString) : null;
   const finalDate = parsedDate && !isNaN(parsedDate) ? parsedDate : null;

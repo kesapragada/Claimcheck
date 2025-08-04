@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/context/AuthContext.jsx
+//CLAIMCHECK/frontend/src/context/AuthContext.jsx
 import { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import API from '../services/api'; // Import your API helper
 

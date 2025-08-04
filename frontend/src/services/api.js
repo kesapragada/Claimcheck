@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/services/api.js
+//CLAIMCHECK/frontend/src/services/api.js
 import axios from 'axios';
 
 const API = axios.create({

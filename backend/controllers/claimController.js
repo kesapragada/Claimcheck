@@ -1,5 +1,4 @@
-//CLAIMCHECK/backend/controllers/claimController.js
-
+//CLaimcheck/backen/controllers/claimController.js
 // This controller receives the upload result from the frontend.
 // The 'protect' middleware guarantees that req.user exists.
 const Claim = require('../models/Claim');

@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/routes/ProtectedRoute.jsx
+//CLAIMCHECK/frontend/src/routes/ProtectedRoute.jsx
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 

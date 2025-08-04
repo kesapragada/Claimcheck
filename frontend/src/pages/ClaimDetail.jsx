@@ -1,4 +1,3 @@
-//CLAIMCHECK/frontend/src/pages/ClaimDetail.jsx
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getClaim, updateClaim } from '../services/claimService';
@@ -7,14 +6,6 @@ import { Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
-
-// --- PDF Viewer Imports ---
-import { Document, Page, pdfjs } from 'react-pdf';
-import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
-import 'react-pdf/dist/esm/Page/TextLayer.css';
-
-// Configure the worker to load from a CDN. This is the easiest setup.
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 const formatDateForInput = (isoDate) => {
   if (!isoDate) return '';
@@ -36,11 +27,6 @@ export default function ClaimDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  const [numPages, setNumPages] = useState(null);
-
-  const onDocumentLoadSuccess = ({ numPages }) => {
-    setNumPages(numPages);
-  };
 
   const initialFields = useMemo(() => {
     if (!claim) return { name: '', date: '', amount: '', currency: '' };
@@ -95,48 +81,37 @@ export default function ClaimDetail() {
   if (!claim) return <div className="text-center p-10 text-red-500">Could not find claim data.</div>;
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <Link to="/history" className="text-indigo-400 hover:underline mb-4 inline-flex items-center gap-2"><ArrowLeft size={16} /> Back to History</Link>
+    <div className="max-w-xl mx-auto">
+      <Link to="/history" className="text-indigo-400 dark:text-indigo-400 hover:underline mb-4 inline-flex items-center gap-2"><ArrowLeft size={16} /> Back to History</Link>
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        {/* --- PDF Viewer Column --- */}
-        <div className="bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg shadow-lg overflow-y-auto h-[75vh]">
-          <Document file={claim.secureUrl} onLoadSuccess={onDocumentLoadSuccess} className="flex justify-center p-4">
-            {Array.from(new Array(numPages), (el, index) => (
-              <Page key={`page_${index + 1}`} pageNumber={index + 1} />
-            ))}
-          </Document>
-        </div>
-
-        {/* --- Edit Form Column --- */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-lg shadow-lg">
-          <h2 className="text-2xl font-bold mb-2">Edit Claim</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 font-mono break-all">{claim.filename}</p>
-          <form onSubmit={handleSave} className="space-y-4">
-            <div>
-              <Label htmlFor="name">Claimant Name</Label>
-              <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} className="mt-1" placeholder="None" />
-            </div>
-            <div>
-              <Label htmlFor="date">Claim Date</Label>
-              <Input id="date" name="date" type="date" value={formatDateForInput(formData.date)} onChange={handleChange} className="mt-1" />
-            </div>
-            <div>
-              <Label htmlFor="amount">Claim Amount</Label>
-              <div className="relative mt-1">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <span className="text-slate-400 sm:text-sm">{getCurrencySymbol(formData.currency)}</span>
-                </div>
-                <Input id="amount" name="amount" type="number" step="0.01" value={formData.amount || ''} onChange={handleChange} className="pl-7" placeholder="None" />
+      {/* --- The main content is now the edit form itself, centered on the page --- */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 rounded-lg shadow-lg">
+        <h2 className="text-2xl font-bold mb-2">Edit Claim</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 font-mono break-all">{claim.filename}</p>
+        <form onSubmit={handleSave} className="space-y-4">
+          <div>
+            <Label htmlFor="name">Claimant Name</Label>
+            <Input id="name" name="name" value={formData.name || ''} onChange={handleChange} className="mt-1" placeholder="None" />
+          </div>
+          <div>
+            <Label htmlFor="date">Claim Date</Label>
+            <Input id="date" name="date" type="date" value={formatDateForInput(formData.date)} onChange={handleChange} className="mt-1" />
+          </div>
+          <div>
+            <Label htmlFor="amount">Claim Amount</Label>
+            <div className="relative mt-1">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <span className="text-slate-400 sm:text-sm">{getCurrencySymbol(formData.currency)}</span>
               </div>
+              <Input id="amount" name="amount" type="number" step="0.01" value={formData.amount || ''} onChange={handleChange} className="pl-7" placeholder="None" />
             </div>
-            <div className="flex justify-end pt-2">
-              <Button type="submit" disabled={isSaving || !isDirty}>
-                {isSaving ? 'Saving...' : 'Save Corrections'}
-              </Button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={isSaving || !isDirty}>
+              {isSaving ? 'Saving...' : 'Save Corrections'}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );

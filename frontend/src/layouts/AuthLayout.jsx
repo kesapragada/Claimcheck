@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/layouts/AuthLayout.jsx
+//CLAIMCHECK/frontend/src/layouts/AuthLayout.jsx
 import { Outlet } from 'react-router-dom';
 import { LogoHero } from '../components/Logo';
 

@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/pages/Dashboard.jsx
+//CLAIMCHECK/frontend/src/pages/Dashboard.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { createClaim } from '../services/claimService';

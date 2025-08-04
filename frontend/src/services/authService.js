@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/services/authService.js
+//CLAIMCHECK/frontend/src/services/authService.js
 import API from './api';
 
 export const register = (userData) => {

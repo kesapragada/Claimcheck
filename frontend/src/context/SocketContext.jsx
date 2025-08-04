@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/context/SocketContext.jsx
+//CLAIMCHECK/frontend/src/context/SocketContext.jsx
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';

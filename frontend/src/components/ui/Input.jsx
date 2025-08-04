@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/components/ui/Input.jsx
+//CLAIMCHECK/frontend/src/components/ui/Input.jsx
 import React from 'react';
 
 const Input = React.forwardRef(({ className, type, ...props }, ref) => {

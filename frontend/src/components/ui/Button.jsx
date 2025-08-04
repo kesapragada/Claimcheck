@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/components/ui/Button.jsx
+//CLAIMCHECK/frontend/src/components/ui/Button.jsx
 import React from 'react';
 
 const Button = React.forwardRef(({ className, children, ...props }, ref) => {

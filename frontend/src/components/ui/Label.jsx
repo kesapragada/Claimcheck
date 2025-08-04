@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/components/ui/Label.jsx
+//CLAIMCHECK/frontend/src/components/ui/Label.jsx
 import React from 'react';
 
 const Label = React.forwardRef(({ className, ...props }, ref) => (

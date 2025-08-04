@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/components/Logo.jsx
+//CLAIMCHECK/frontend/src/components/Logo.jsx
 
 import { FileCheck2 } from 'lucide-react';
 

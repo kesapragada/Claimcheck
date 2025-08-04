@@ -1,4 +1,4 @@
-//CLAIMCHECK/frontend/react/src/pages/Login.jsx
+//CLAIMCHECK/frontend/src/pages/Login.jsx
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
