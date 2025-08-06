@@ -35,7 +35,6 @@ services:
   - type: web
     name: claimcheck-web
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: "npm install && npm run build"
     staticPublishPath: dist
@@ -46,4 +45,4 @@ services:
           name: claimcheck-api
           property: host
       - key: VITE_CLOUDINARY_CLOUD_NAME
-        value: dxq68ofod  # or set via envGroup if needed
+        value: dxq68ofod
