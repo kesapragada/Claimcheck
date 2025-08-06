@@ -1,4 +1,5 @@
-//CLaimcheck/backen/controllers/claimController.js
+// CLaimcheck/backen/controllers/claimController.js
+
 // This controller receives the upload result from the frontend.
 // The 'protect' middleware guarantees that req.user exists.
 const Claim = require('../models/Claim');
@@ -50,6 +51,7 @@ exports.updateClaim = async (req, res, next) => {
       name: req.body.name,
       date: req.body.date ? new Date(req.body.date) : null,
       amount: parseFloat(amountString),
+      currency: req.body.currency || null, // FIX: Added currency field
     };
     claim.status = 'completed';
     const updatedClaim = await claim.save();
