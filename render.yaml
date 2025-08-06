@@ -33,5 +33,4 @@ services:
           type: web
           name: claimcheck-api
           property: host
-      - key: VITE_CLOUDINARY_CLOUD_NAME
-        fromGroup: ClaimCheck Shared Secrets
+      - fromGroup: ClaimCheck Shared Secrets
