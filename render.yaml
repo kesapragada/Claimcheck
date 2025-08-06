@@ -4,6 +4,9 @@ services:
     name: claimcheck-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all
 
   # Backend API Server
   - type: web
@@ -13,7 +16,7 @@ services:
     rootDir: backend
     buildCommand: "npm install"
     startCommand: "node server.js"
-    healthCheckPath: /api/health 
+    healthCheckPath: /api/health
     envVars:
       - fromGroup: ClaimCheck Shared Secrets
 
@@ -32,6 +35,7 @@ services:
   - type: web
     name: claimcheck-web
     runtime: static
+    plan: free
     rootDir: frontend
     buildCommand: "npm install && npm run build"
     staticPublishPath: dist
@@ -40,6 +44,6 @@ services:
         fromService:
           type: web
           name: claimcheck-api
-          property: url
+          property: host
       - key: VITE_CLOUDINARY_CLOUD_NAME
-        fromGroup: ClaimCheck Shared Secrets
+        value: dxq68ofod  # or set via envGroup if needed
