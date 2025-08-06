@@ -29,8 +29,9 @@ services:
       - fromGroup: ClaimCheck Shared Secrets
 
   # Frontend Static Site
-  - type: static
+  - type: web
     name: claimcheck-web
+    runtime: static
     rootDir: frontend
     buildCommand: "npm install && npm run build"
     publishDir: dist
