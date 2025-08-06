@@ -1,0 +1,46 @@
+services:
+  # Redis Cache
+  - name: claimcheck-redis
+    type: redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+
+  # Backend API
+  - name: claimcheck-api
+    type: web
+    runtime: node
+    plan: free
+    branch: master
+    rootDir: backend
+    buildCommand: "npm install"
+    startCommand: "node server.js"
+    envGroup: ClaimCheck Shared Secrets
+    healthCheckPath: /api/health # Add a health check endpoint in your API
+
+  # Backend Worker
+  - name: claimcheck-worker
+    type: worker
+    runtime: node
+    plan: free # This is the key part that the UI was blocking!
+    branch: master
+    rootDir: backend
+    buildCommand: "npm install"
+    startCommand: "node worker.js"
+    envGroup: ClaimCheck Shared Secrets
+
+  # Frontend Static Site
+  - name: claimcheck-web
+    type: static
+    branch: master
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    publishDir: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: claimcheck-api
+          property: url
+      - key: VITE_CLOUDINARY_CLOUD_NAME
+        # Manually enter your Cloudinary cloud name here
+        value: dxq68ofod
