@@ -31,10 +31,12 @@ services:
   # Frontend Static Site
   - name: claimcheck-web
     type: web
+    runtime: static   
+    plan: free
     branch: master
     rootDir: frontend
     buildCommand: "npm install && npm run build"
-    publishDir: dist
+    staticPublishPath: dist  
     envVars:
       - key: VITE_API_URL
         fromService:
@@ -42,5 +44,4 @@ services:
           name: claimcheck-api
           property: url
       - key: VITE_CLOUDINARY_CLOUD_NAME
-        # Manually enter your Cloudinary cloud name here
         value: dxq68ofod
