@@ -8,26 +8,15 @@ services:
       - source: 0.0.0.0/0
         description: Allow all
 
-  # Backend API Server
+  # Backend API + Worker (Combined)
   - type: web
     name: claimcheck-api
     runtime: node
     plan: free
     rootDir: backend
     buildCommand: "npm install"
-    startCommand: "node server.js"
+    startCommand: "npm start"
     healthCheckPath: /api/health
-    envVars:
-      - fromGroup: ClaimCheck Shared Secrets
-
-  # Backend Worker
-  - type: worker
-    name: claimcheck-worker
-    runtime: node
-    plan: free
-    rootDir: backend
-    buildCommand: "npm install"
-    startCommand: "node worker.js"
     envVars:
       - fromGroup: ClaimCheck Shared Secrets
 
@@ -45,4 +34,4 @@ services:
           name: claimcheck-api
           property: host
       - key: VITE_CLOUDINARY_CLOUD_NAME
-        value: dxq68ofod
+        fromGroup: ClaimCheck Shared Secrets
