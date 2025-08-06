@@ -30,7 +30,7 @@ services:
 
   # Frontend Static Site
   - name: claimcheck-web
-    type: static
+    type: web
     branch: master
     rootDir: frontend
     buildCommand: "npm install && npm run build"
