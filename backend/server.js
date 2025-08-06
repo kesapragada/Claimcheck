@@ -1,4 +1,5 @@
 //CLAIMCHECK/backend/server.js
+
 // Load environment variables immediately, once, at the very top of the application entry point.
 const dotenv = require('dotenv');
 dotenv.config({ path: '../.env' });
@@ -43,7 +44,7 @@ io.on('connection', (socket) => {
 });
 
 subClient.subscribe('claim-updates', (err) => {
-    if (err) logger.error('Failed to subscribe to claim-updates', { error: err.message });
+  if (err) logger.error('Failed to subscribe to claim-updates', { error: err.message });
 });
 
 subClient.on('message', (channel, message) => {
@@ -70,6 +71,12 @@ app.use(express.urlencoded({ extended: false }));
 app.use('/api/auth', authRoutes);
 app.use('/api/claims', claimRoutes);
 
+// Health check endpoint for Render
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// Error handling middleware
 app.use((err, req, res, next) => {
   const errorContext = {
     requestId: req.headers['x-request-id'],
