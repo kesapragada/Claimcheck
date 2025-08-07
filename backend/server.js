@@ -2,7 +2,7 @@
 
 // Load environment variables immediately, once, at the very top of the application entry point.
 const dotenv = require('dotenv');
-dotenv.config({ path: '../.env' });
+dotenv.config();
 
 // Now, all other imports will have access to process.env
 const express = require('express');
