@@ -1,4 +1,4 @@
-# render.yaml - v3, Corrected for Validation Errors
+# render.yaml - FINAL VERSION
 
 services:
   # 1. The Redis Cache
@@ -16,6 +16,10 @@ services:
     runtime: node
     plan: free
     rootDir: Backend
+    # --- THIS IS THE CRITICAL FIX ---
+    # This runs before 'npm install' and installs the system package needed by pdf2pic.
+    preInstallCommand: "apt-get update && apt-get install -y graphicsmagick"
+    # ---------------------------------
     buildCommand: "npm install"
     startCommand: "npm run start"
     healthCheckPath: /api/health
@@ -41,6 +45,7 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      # Hardcoding the URL is fine.
       - key: VITE_API_URL
         value: https://claimcheck-api.onrender.com
       - fromGroup: ClaimCheck Shared Secrets
