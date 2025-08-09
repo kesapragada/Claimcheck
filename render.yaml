@@ -6,8 +6,6 @@ services:
     name: claimcheck-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
-    # FIX #1: Added back the required IP Allow List.
-    # This allows other services within your Render account to connect.
     ipAllowList:
       - source: 0.0.0.0/0
         description: Allow all internal
@@ -43,9 +41,6 @@ services:
         source: /*
         destination: /index.html
     envVars:
-      # FIX #2: Keeping 'url' as it's the correct documented property.
-      # If this validation fails again, we will remove this block.
       - key: VITE_API_URL
         value: https://claimcheck-api.onrender.com
-
       - fromGroup: ClaimCheck Shared Secrets
