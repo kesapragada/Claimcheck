@@ -1,7 +1,7 @@
-# render.yaml - FINAL VERSION
+# render.yaml - FINAL DOCKER VERSION
 
 services:
-  # 1. The Redis Cache
+  # 1. The Redis Cache (This is correct)
   - type: redis
     name: claimcheck-redis
     plan: free
@@ -10,19 +10,17 @@ services:
       - source: 0.0.0.0/0
         description: Allow all internal
 
-  # 2. The Backend (API + Worker COMBINED)
+  # 2. The Backend (API + Worker COMBINED) using Docker
   - type: web
     name: claimcheck-api
-    runtime: node
     plan: free
-    rootDir: Backend
-    # --- THIS IS THE CRITICAL FIX ---
-    # This runs before 'npm install' and installs the system package needed by pdf2pic.
-    preInstallCommand: "apt-get update && apt-get install -y graphicsmagick"
-    # ---------------------------------
-    buildCommand: "npm install"
-    startCommand: "npm run start"
+    # --- FIX #1: Specify the runtime as 'docker' ---
+    runtime: docker
+    # --- FIX #2: Point to the Dockerfile's location ---
+    dockerfilePath: ./Backend/Dockerfile
+    # The 'healthCheckPath' is still useful for Docker deployments
     healthCheckPath: /api/health
+    # --- FIX #3: All build/start commands are removed because Docker handles them ---
     envVars:
       - fromGroup: ClaimCheck Shared Secrets
       - key: REDIS_URL
@@ -30,10 +28,11 @@ services:
           type: redis
           name: claimcheck-redis
           property: connectionString
+      # The PORT is still needed for Render to map traffic correctly.
       - key: PORT
         value: 10000
 
-  # 3. The Frontend
+  # 3. The Frontend (This is correct)
   - type: web
     name: claimcheck-web
     runtime: static
@@ -45,7 +44,6 @@ services:
         source: /*
         destination: /index.html
     envVars:
-      # Hardcoding the URL is fine.
       - key: VITE_API_URL
         value: https://claimcheck-api.onrender.com
       - fromGroup: ClaimCheck Shared Secrets
