@@ -11,7 +11,7 @@ const axios = require('axios');
 
 // --- NEW IMPORTS FOR PURE JS PDF PROCESSING ---
 // CORRECTED IMPORT PATH FOR PDFJS-DIST v4
-const pdfjs = require('pdfjs-dist');
+const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
 const { createCanvas } = require('canvas');
 // ---------------------------------------------
 
