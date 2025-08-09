@@ -1,11 +1,11 @@
-# Backend/Dockerfile - Simpler Version
-
+# Backend/Dockerfile - Updated to include GraphicsMagick
 FROM node:20-slim
 WORKDIR /usr/src/app
 
 # Install system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    imagemagick \
+    graphicsmagick \     
+    imagemagick \        
     ghostscript \
     tesseract-ocr \
     tesseract-ocr-eng \
