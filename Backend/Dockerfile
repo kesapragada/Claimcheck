@@ -1,27 +1,30 @@
-# Use a specific, stable Node.js version
+# Use a specific, stable Node.js version as the base
 FROM node:20-slim
 
-# Set the working directory
+# Set the working directory inside the container
 WORKDIR /usr/src/app
 
 # --- INSTALL ALL REQUIRED SYSTEM DEPENDENCIES ---
-# Ghostscript is needed for PDF processing by GraphicsMagick
+# This installs ImageMagick (for pdf2pic), Ghostscript (for PDF reading),
+# and Tesseract with its English language pack.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    graphicsmagick \
+    imagemagick \
     ghostscript \
-    && rm -rf /var/lib/apt/lists/*
+    tesseract-ocr \
+    tesseract-ocr-eng \
+ && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
+# Copy package.json and package-lock.json first to leverage Docker's build cache
 COPY package*.json ./
 
-# Install dependencies
+# Install Node.js dependencies
 RUN npm install
 
-# Copy application code
+# Copy the rest of your application's source code
 COPY . .
 
-# Expose port
+# Expose the port your app runs on
 EXPOSE 10000
 
-# Run the app
+# The command to start your application
 CMD [ "node", "server.js" ]

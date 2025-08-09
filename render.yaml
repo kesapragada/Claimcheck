@@ -15,9 +15,8 @@ services:
     name: claimcheck-api
     plan: free
     runtime: docker
-    # This points to your Dockerfile in the Backend directory
+    # This points to your new, robust Dockerfile
     dockerfilePath: ./Backend/Dockerfile
-    # The health check is still useful
     healthCheckPath: /api/health
     envVars:
       - fromGroup: ClaimCheck Shared Secrets
@@ -42,6 +41,5 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        # This should be the final public URL of your API service
         value: https://claimcheck-api.onrender.com
       - fromGroup: ClaimCheck Shared Secrets
