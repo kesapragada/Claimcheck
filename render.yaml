@@ -46,8 +46,6 @@ services:
       # FIX #2: Keeping 'url' as it's the correct documented property.
       # If this validation fails again, we will remove this block.
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: claimcheck-api
-          property: url
+        value: https://claimcheck-api.onrender.com
+
       - fromGroup: ClaimCheck Shared Secrets
