@@ -1,5 +1,8 @@
-const dotenv = require('dotenv');
-dotenv.config({ path: '../.env' });
+// CLAIMCHECK/backend/worker.js
+
+// The dotenv config is now handled by server.js, so we can remove it from here.
+// const dotenv = require('dotenv');
+// dotenv.config({ path: '../.env' });
 
 const { Worker } = require('bullmq');
 const IORedis = require('ioredis');
@@ -11,29 +14,31 @@ const { createWriteStream } = require('fs');
 const axios = require('axios');
 const poppler = require('pdf-poppler');
 
-const connectDB = require('./config/db');
+// The DB connection is now handled by server.js.
+// const connectDB = require('./config/db');
 const Claim = require('./models/Claim');
 const logger = require('./config/logger');
 
 const redisPub = new IORedis(process.env.REDIS_URL);
 
+// --- NO CHANGES NEEDED IN THESE HELPER FUNCTIONS ---
 const extractFields = (text) => {
+  // ... your existing logic for extracting fields ...
   // --- FINAL NAME EXTRACTION LOGIC ---
-  const nameLineMatch = text.match(/^(?:name|claimant|applicant|patient|submitted by)\s*[:\-\s]\s*(.*)$/im);
+  const nameLineMatch = text.match(/^(?:name|claimant|applicant|patient|submitted by)\s*[:-\s]\s*(.*)$/im);
   let extractedName = null;
   if (nameLineMatch && nameLineMatch[1]) {
-    let potentialName = nameLineMatch[1];
+    let potentialName = nameLine-match[1];
     const cleanupPattern = /\s+(?:date|policy|claim|service|report|id).*/i;
     extractedName = potentialName.replace(cleanupPattern, '').trim();
   }
-  
+
   // --- FINAL DATE EXTRACTION LOGIC ---
   const dateMatch = text.match(/\b(\d{1,2}[-/.s]\d{1,2}[-/.s]\d{2,4})\b/);
-  
+
   // --- FINAL AMOUNT EXTRACTION LOGIC ---
-  // This regex is now as comprehensive as it can be for the provided examples.
-  const amountMatches = text.matchAll(/(?:total amount|balance duc|balance due|amount due|total charges|total chirges|payment|total|amount|charge)\s*[:\-\s]*?(?<currency>[$€£₹])?\s*(?<value>[\d,]+\.\d{2})/gi);
-  
+  const amountMatches = text.matchAll(/(?:total amount|balance duc|balance due|amount due|total charges|total chirges|payment|total|amount|charge)\s*[:-\s]?(?<currency>[$€£₹])?\s*(?<value>[\d,]+\.\d{2})/gi);
+
   let bestAmount = null;
   let detectedCurrency = null;
   let highestValue = -1;
@@ -42,7 +47,7 @@ const extractFields = (text) => {
     if (value > highestValue) {
       highestValue = value;
       bestAmount = value;
-      detectedCurrency = match.groups.currency || null; 
+      detectedCurrency = match.groups.currency || null;
     }
   }
 
@@ -58,7 +63,6 @@ const extractFields = (text) => {
   };
 };
 
-
 const publishUpdate = async (claimId) => {
   try {
     const updatedClaim = await Claim.findById(claimId);
@@ -70,6 +74,7 @@ const publishUpdate = async (claimId) => {
     logger.error(`[Worker] Failed to publish update for claim ${claimId}`, { error: e.message });
   }
 };
+// --- END OF HELPER FUNCTIONS ---
 
 const processClaimJob = async (job) => {
   const { claimId, signedUrl } = job.data;
@@ -95,10 +100,10 @@ const processClaimJob = async (job) => {
     const finalImagePath = `${tempImageBase}-1.png`;
     const result = await Tesseract.recognize(finalImagePath, 'eng');
     console.log("--- RAW OCR TEXT ---", result.data.text);
-
     const fields = extractFields(result.data.text);
     await Claim.findByIdAndUpdate(claimId, { status: 'completed', extractedText: result.data.text, fields });
     await publishUpdate(claimId);
+
   } catch (err) {
     logger.error(`[Worker] Error processing claim ${claimId}`, { error: err.message, stack: err.stack });
     await Claim.findByIdAndUpdate(claimId, { status: 'failed' });
@@ -114,11 +119,29 @@ const processClaimJob = async (job) => {
   }
 };
 
-const startWorker = async () => {
-  await connectDB();
+
+// --- THIS IS THE KEY CHANGE ---
+// We wrap the worker startup logic in an exported function.
+const startWorker = () => {
+  // We no longer need to connect to the DB here because server.js already does it.
   const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
-  const worker = new Worker('claims', processClaimJob, { connection });
-  logger.info('Worker is ready and listening for jobs...');
+
+  // Concurrency is important. It means the worker can process up to 5 jobs at once
+  // without completely blocking the single event loop of our combined server.
+  const worker = new Worker('claims', processClaimJob, {
+    connection,
+    concurrency: 5
+  });
+
+  worker.on('failed', (job, err) => {
+    logger.error(`Job ${job.id} failed with error ${err.message}`);
+  });
+
+  logger.info('Worker is ready and listening for jobs in the main server process...');
 };
 
-startWorker();
+// We remove the old self-invoking call:
+// startWorker();
+
+// And instead, we export the function for server.js to use.
+module.exports = { startWorker };
