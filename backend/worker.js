@@ -93,7 +93,10 @@ const processClaimJob = async (job) => {
         await Claim.findByIdAndUpdate(claimId, { status: 'completed', extractedText: result.data.text, fields });
         await publishUpdate(claimId);
 
+
     } catch (err) {
+        console.error("FULL ERROR:", err); // <-- Add this
+
         logger.error(`[Worker] Error processing claim ${claimId}`, { error: err.message, stack: err.stack });
         await Claim.findByIdAndUpdate(claimId, { status: 'failed' });
         await publishUpdate(claimId);
