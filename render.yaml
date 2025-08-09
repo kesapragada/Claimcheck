@@ -1,7 +1,7 @@
-# render.yaml - FINAL PURE NODE.JS VERSION
+# render.yaml - FINAL DOCKER VERSION
 
 services:
-  # 1. The Redis Cache
+  # 1. Redis Cache
   - type: redis
     name: claimcheck-redis
     plan: free
@@ -10,16 +10,14 @@ services:
       - source: 0.0.0.0/0
         description: Allow all internal
 
-  # 2. The Backend (API + Worker COMBINED)
+  # 2. Backend (API + Worker COMBINED) using Docker
   - type: web
     name: claimcheck-api
-    # --- REVERTED TO NODE RUNTIME ---
-    runtime: node
     plan: free
-    rootDir: Backend
-    # --- USING STANDARD BUILD/START COMMANDS ---
-    buildCommand: "npm install"
-    startCommand: "npm run start"
+    runtime: docker
+    # This points to your Dockerfile in the Backend directory
+    dockerfilePath: ./Backend/Dockerfile
+    # The health check is still useful
     healthCheckPath: /api/health
     envVars:
       - fromGroup: ClaimCheck Shared Secrets
@@ -31,7 +29,19 @@ services:
       - key: PORT
         value: 10000
 
-  # 3. The Frontend
+  # 3. Frontend
   - type: web
     name: claimcheck-web
-    # ... frontend section is unchanged ...
+    runtime: static
+    rootDir: Frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        # This should be the final public URL of your API service
+        value: https://claimcheck-api.onrender.com
+      - fromGroup: ClaimCheck Shared Secrets

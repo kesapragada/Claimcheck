@@ -1,4 +1,4 @@
-// CLAIMCHECK/backend/worker.js - FINAL CORRECTED VERSION
+// CLAIMCHECK/backend/worker.js - FINAL pdf2pic VERSION
 
 const { Worker } = require('bullmq');
 const IORedis = require('ioredis');
@@ -8,14 +8,7 @@ const os = require('os');
 const path = require('path');
 const { createWriteStream } = require('fs');
 const axios = require('axios');
-
-// --- NEW IMPORTS FOR PURE JS PDF PROCESSING ---
-// CORRECTED IMPORT PATH FOR PDFJS-DIST v4
-const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
-const { createCanvas, ImageData } = require('canvas');
-global.ImageData = ImageData;
-
-// ---------------------------------------------
+const { fromPath } = require("pdf2pic"); // Using the correct library
 
 const Claim = require('./models/Claim');
 const logger = require('./config/logger');
@@ -61,19 +54,6 @@ const publishUpdate = async (claimId) => {
   }
 };
 
-// --- NEW HELPER FUNCTION TO RENDER PDF PAGE ---
-async function renderPage(page) {
-    const viewport = page.getViewport({ scale: 3.0 }); // Increase scale for higher resolution
-    const canvas = createCanvas(viewport.width, viewport.height);
-    const context = canvas.getContext('2d');
-    const renderContext = {
-        canvasContext: context,
-        viewport: viewport,
-    };
-    await page.render(renderContext).promise;
-    return canvas;
-}
-// -------------------------------------------
 
 const processClaimJob = async (job) => {
     const { claimId, signedUrl } = job.data;
@@ -92,27 +72,22 @@ const processClaimJob = async (job) => {
             writer.on('error', reject);
         });
 
-        // --- NEW PURE JAVASCRIPT PDF TO IMAGE CONVERSION ---
-        const data = new Uint8Array(await fs.readFile(tempPdfPath));
-        const doc = await pdfjs.getDocument(data).promise;
-        const page = await doc.getPage(1); // Get the first page
-
-        const canvas = await renderPage(page);
-        
-        finalImagePath = path.join(os.tmpdir(), `claim-image-${claimId}-${Date.now()}.png`);
-        const out = require('fs').createWriteStream(finalImagePath);
-        const stream = canvas.createPNGStream();
-        stream.pipe(out);
-        await new Promise((resolve, reject) => {
-            out.on('finish', resolve);
-            out.on('error', reject);
-        });
-        // --- END OF NEW CONVERSION LOGIC ---
+        const options = {
+            density: 300,
+            saveFilename: `claim-image-${claimId}-${Date.now()}`,
+            savePath: os.tmpdir(),
+            format: "png",
+            width: 1600,
+            height: 2200
+        };
+        const convert = fromPath(tempPdfPath, options);
+        const pageToConvertAsImage = 1;
+        const conversionResult = await convert(pageToConvertAsImage, { responseType: "image" });
+        finalImagePath = conversionResult.path;
 
         logger.info(`Successfully converted PDF to image: ${finalImagePath}`);
         const result = await Tesseract.recognize(finalImagePath, 'eng');
         
-        logger.info("--- RAW OCR TEXT ---", { text: result.data.text });
         const fields = extractFields(result.data.text);
 
         await Claim.findByIdAndUpdate(claimId, { status: 'completed', extractedText: result.data.text, fields });
@@ -123,14 +98,10 @@ const processClaimJob = async (job) => {
         await Claim.findByIdAndUpdate(claimId, { status: 'failed' });
         await publishUpdate(claimId);
     } finally {
-        // Cleanup logic is the same
-        await fs.unlink(tempPdfPath).catch(err => {
-            if (err.code !== 'ENOENT') logger.warn(`[Worker] Failed to delete temp PDF ${tempPdfPath}`, { error: err.message });
-        });
+        // Use a simple catch to avoid crashing if file doesn't exist
+        await fs.unlink(tempPdfPath).catch(() => {});
         if (finalImagePath) {
-            await fs.unlink(finalImagePath).catch(err => {
-                if (err.code !== 'ENOENT') logger.warn(`[Worker] Failed to delete temp PNG ${finalImagePath}`, { error: err.message });
-            });
+            await fs.unlink(finalImagePath).catch(() => {});
         }
     }
 };

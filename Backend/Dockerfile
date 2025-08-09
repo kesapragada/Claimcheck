@@ -1,27 +1,27 @@
-# Use an official Node.js runtime as a parent image.
-# Using a specific version like 20 is good practice.
+# Use a specific, stable Node.js version
 FROM node:20-slim
 
-# Set the working directory in the container
+# Set the working directory
 WORKDIR /usr/src/app
 
-# --- INSTALL SYSTEM DEPENDENCIES ---
-# First, update the package lists, then install graphicsmagick and any other tools.
-# The '&& rm -rf /var/lib/apt/lists/*' cleans up to keep the image small.
-RUN apt-get update && apt-get install -y graphicsmagick && rm -rf /var/lib/apt/lists/*
+# --- INSTALL ALL REQUIRED SYSTEM DEPENDENCIES ---
+# Ghostscript is needed for PDF processing by GraphicsMagick
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    graphicsmagick \
+    ghostscript \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy package.json and package-lock.json
+# Copy package files
 COPY package*.json ./
 
-# Install app dependencies
+# Install dependencies
 RUN npm install
 
-# Copy the rest of your application code into the container
+# Copy application code
 COPY . .
 
-# Your app binds to port 10000, so we expose it.
-# Render will automatically use the PORT environment variable regardless.
+# Expose port
 EXPOSE 10000
 
-# Define the command to run your app
+# Run the app
 CMD [ "node", "server.js" ]
