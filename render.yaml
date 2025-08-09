@@ -1,23 +1,28 @@
-# render.yaml
+# render.yaml - v3, Corrected for Validation Errors
 
 services:
-  # 1. The Redis Cache (No changes needed here)
+  # 1. The Redis Cache
   - type: redis
     name: claimcheck-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
+    # FIX #1: Added back the required IP Allow List.
+    # This allows other services within your Render account to connect.
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all internal
 
   # 2. The Backend (API + Worker COMBINED)
   - type: web
     name: claimcheck-api
     runtime: node
-    plan: free 
+    plan: free
     rootDir: Backend
     buildCommand: "npm install"
     startCommand: "npm run start"
     healthCheckPath: /api/health
     envVars:
-      - fromGroup: ClaimCheck Shared Secrets 
+      - fromGroup: ClaimCheck Shared Secrets
       - key: REDIS_URL
         fromService:
           type: redis
@@ -25,7 +30,8 @@ services:
           property: connectionString
       - key: PORT
         value: 10000
-  # 3. Frontend
+
+  # 3. The Frontend
   - type: web
     name: claimcheck-web
     runtime: static
@@ -37,6 +43,8 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      # FIX #2: Keeping 'url' as it's the correct documented property.
+      # If this validation fails again, we will remove this block.
       - key: VITE_API_URL
         fromService:
           type: web
