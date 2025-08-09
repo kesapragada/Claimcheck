@@ -13,7 +13,7 @@ services:
     name: claimcheck-api
     runtime: node
     plan: free
-    rootDir: backend
+    rootDir: Backend  # <-- FIX: Capital B
     buildCommand: "npm install"
     startCommand: "node server.js"
     healthCheckPath: /api/health
@@ -25,7 +25,7 @@ services:
     name: claimcheck-worker
     runtime: node
     plan: free
-    rootDir: backend
+    rootDir: Backend  # <-- FIX: Capital B
     buildCommand: "npm install"
     startCommand: "node worker.js"
     envVars:
@@ -35,7 +35,7 @@ services:
   - type: web
     name: claimcheck-web
     runtime: static
-    rootDir: frontend
+    rootDir: Frontend # <-- FIX: Capital F
     buildCommand: "npm install && npm run build"
     staticPublishPath: dist
     envVars:
@@ -43,5 +43,5 @@ services:
         fromService:
           type: web
           name: claimcheck-api
-          property: host
+          property: url # <-- BEST PRACTICE: Use 'url' to get the full https:// address
       - fromGroup: ClaimCheck Shared Secrets
