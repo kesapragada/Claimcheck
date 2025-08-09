@@ -1,4 +1,4 @@
-// CLAIMCHECK/backend/worker.js - FINAL PURE JAVASCRIPT VERSION
+// CLAIMCHECK/backend/worker.js - FINAL CORRECTED VERSION
 
 const { Worker } = require('bullmq');
 const IORedis = require('ioredis');
@@ -10,7 +10,8 @@ const { createWriteStream } = require('fs');
 const axios = require('axios');
 
 // --- NEW IMPORTS FOR PURE JS PDF PROCESSING ---
-const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
+// CORRECTED IMPORT PATH FOR PDFJS-DIST v4
+const pdfjs = require('pdfjs-dist');
 const { createCanvas } = require('canvas');
 // ---------------------------------------------
 
@@ -19,10 +20,44 @@ const logger = require('./config/logger');
 const redisPub = new IORedis(process.env.REDIS_URL);
 
 
-const extractFields = (text) => { /* ... no changes needed ... */ };
-const publishUpdate = async (claimId) => { /* ... no changes needed ... */ };
-// (Your extractFields and publishUpdate functions are fine)
+const extractFields = (text) => {
+  const nameLineMatch = text.match(/^(?:name|claimant|applicant|patient|submitted by)\s*[:-\s]\s*(.*)$/im);
+  let extractedName = null;
+  if (nameLineMatch && nameLineMatch[1]) {
+    let potentialName = nameLineMatch[1];
+    const cleanupPattern = /\s+(?:date|policy|claim|service|report|id).*/i;
+    extractedName = potentialName.replace(cleanupPattern, '').trim();
+  }
+  const dateMatch = text.match(/\b(\d{1,2}[-/.s]\d{1,2}[-/.s]\d{2,4})\b/);
+  const amountMatches = text.matchAll(/(?:total amount|balance duc|balance due|amount due|total charges|total chirges|payment|total|amount|charge)\s*[:-\s]?(?<currency>[$€£₹])?\s*(?<value>[\d,]+\.\d{2})/gi);
+  let bestAmount = null;
+  let detectedCurrency = null;
+  let highestValue = -1;
+  for (const match of amountMatches) {
+    const value = parseFloat(match.groups.value.replace(/,/g, ''));
+    if (value > highestValue) {
+      highestValue = value;
+      bestAmount = value;
+      detectedCurrency = match.groups.currency || null;
+    }
+  }
+  const parsedDateString = dateMatch && dateMatch[1] ? dateMatch[1] : null;
+  const parsedDate = parsedDateString ? new Date(parsedDateString) : null;
+  const finalDate = parsedDate && !isNaN(parsedDate) ? parsedDate : null;
+  return { name: extractedName, date: finalDate, amount: bestAmount, currency: detectedCurrency };
+};
 
+const publishUpdate = async (claimId) => {
+  try {
+    const updatedClaim = await Claim.findById(claimId);
+    if (updatedClaim) {
+      const message = JSON.stringify({ userId: updatedClaim.userId.toString(), claim: updatedClaim });
+      await redisPub.publish('claim-updates', message);
+    }
+  } catch (e) {
+    logger.error(`[Worker] Failed to publish update for claim ${claimId}`, { error: e.message });
+  }
+};
 
 // --- NEW HELPER FUNCTION TO RENDER PDF PAGE ---
 async function renderPage(page) {
@@ -37,7 +72,6 @@ async function renderPage(page) {
     return canvas;
 }
 // -------------------------------------------
-
 
 const processClaimJob = async (job) => {
     const { claimId, signedUrl } = job.data;
@@ -88,12 +122,27 @@ const processClaimJob = async (job) => {
         await publishUpdate(claimId);
     } finally {
         // Cleanup logic is the same
-        await fs.unlink(tempPdfPath).catch(err => { /* ... */ });
+        await fs.unlink(tempPdfPath).catch(err => {
+            if (err.code !== 'ENOENT') logger.warn(`[Worker] Failed to delete temp PDF ${tempPdfPath}`, { error: err.message });
+        });
         if (finalImagePath) {
-            await fs.unlink(finalImagePath).catch(err => { /* ... */ });
+            await fs.unlink(finalImagePath).catch(err => {
+                if (err.code !== 'ENOENT') logger.warn(`[Worker] Failed to delete temp PNG ${finalImagePath}`, { error: err.message });
+            });
         }
     }
 };
 
-const startWorker = () => { /* ... no changes needed ... */ };
+const startWorker = () => {
+  const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
+  const worker = new Worker('claims', processClaimJob, {
+    connection,
+    concurrency: 5
+  });
+  worker.on('failed', (job, err) => {
+    logger.error(`Job ${job.id} failed with error ${err.message}`);
+  });
+  logger.info('Worker is ready and listening for jobs in the main server process...');
+};
+
 module.exports = { startWorker };
