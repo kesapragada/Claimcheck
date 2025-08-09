@@ -4,7 +4,7 @@
   "description": "The backend for the ClaimCheck application.",
   "main": "server.js",
   "scripts": {
-    "start": "concurrently \"node server.js\" \"node worker.js\"",
+    "start": "node server.js",
     "dev": "concurrently \"nodemon server.js\" \"nodemon worker.js\"",
     "server": "nodemon server.js",
     "worker": "nodemon worker.js"

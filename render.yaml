@@ -1,47 +1,45 @@
+# render.yaml
+
 services:
-  # Redis Cache
+  # 1. The Redis Cache (No changes needed here)
   - type: redis
     name: claimcheck-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: Allow all
 
-  # Backend API (Web Service)
+  # 2. The Backend (API + Worker COMBINED)
   - type: web
     name: claimcheck-api
     runtime: node
-    plan: free
-    rootDir: Backend  # <-- FIX: Capital B
+    plan: free 
+    rootDir: Backend
     buildCommand: "npm install"
-    startCommand: "node server.js"
+    startCommand: "npm run start"
     healthCheckPath: /api/health
     envVars:
-      - fromGroup: ClaimCheck Shared Secrets
-
-  # Backend Worker (Optional, for background jobs)
-  - type: worker
-    name: claimcheck-worker
-    runtime: node
-    plan: free
-    rootDir: Backend  # <-- FIX: Capital B
-    buildCommand: "npm install"
-    startCommand: "node worker.js"
-    envVars:
-      - fromGroup: ClaimCheck Shared Secrets
-
-  # Frontend Static Site
+      - fromGroup: ClaimCheck Shared Secrets 
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: claimcheck-redis
+          property: connectionString
+      - key: PORT
+        value: 10000
+  # 3. Frontend
   - type: web
     name: claimcheck-web
     runtime: static
-    rootDir: Frontend # <-- FIX: Capital F
+    rootDir: Frontend
     buildCommand: "npm install && npm run build"
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_API_URL
         fromService:
           type: web
           name: claimcheck-api
-          property: url # <-- BEST PRACTICE: Use 'url' to get the full https:// address
+          property: url
       - fromGroup: ClaimCheck Shared Secrets

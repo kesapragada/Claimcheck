@@ -1,4 +1,4 @@
-//CLAIMCHECK/backend/server.js
+// CLAIMCHECK/backend/server.js
 
 // Load environment variables immediately, once, at the very top of the application entry point.
 const dotenv = require('dotenv');
@@ -15,6 +15,10 @@ const connectDB = require('./config/db');
 const logger = require('./config/logger');
 const authRoutes = require('./routes/authRoutes');
 const claimRoutes = require('./routes/claimRoutes');
+
+// --- CHANGE HERE: Import the startWorker function ---
+const { startWorker } = require('./worker');
+// ---------------------------------------------------
 
 const app = express();
 const server = http.createServer(app);
@@ -92,4 +96,12 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// --- CHANGE HERE: Start the worker after the server is listening ---
+server.listen(PORT, () => {
+  logger.info(`Server is running on port ${PORT}`);
+
+  // Now, start the BullMQ worker in the same process.
+  startWorker();
+});
+// -----------------------------------------------------------------
